@@ -210,8 +210,10 @@ def get_24h_history():
     try:
         conn = get_db()
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT dateTime, usUnits, outTemp, barometer, rain
+            cur.execute(f"""
+                SELECT dateTime, usUnits, outTemp, barometer, rain,
+                       {AQ_CO2_COL} AS co2,
+                       {AQ_PM10_COL} AS pm10_0
                 FROM archive
                 WHERE dateTime >= %s
                 ORDER BY dateTime ASC
@@ -223,24 +225,33 @@ def get_24h_history():
 
     # Downsample slightly if archive interval is very short (keep ~96 points max)
     step = max(1, len(rows) // 96)
-    labels, temps, pressures, rains = [], [], [], []
+    labels, temps, pressures, rains, co2_vals, pm10_vals = [], [], [], [], [], []
 
     for i in range(0, len(rows), step):
-        r = rows[i]
+        bucket = rows[i:i + step]
+        r = bucket[0]
         u = r["usUnits"]
         dt = datetime.fromtimestamp(r["dateTime"], tz=TIMEZONE)
         labels.append(dt.strftime("%H:%M"))
         temps.append(to_metric(r["outTemp"], "temp", u))
         pressures.append(to_metric(r["barometer"], "pressure", u))
-        # Sum rainfall across the bucket so rain totals stay accurate
-        bucket_rain = sum((rows[j]["rain"] or 0.0) for j in range(i, min(i + step, len(rows))))
+
+        bucket_rain = sum((row["rain"] or 0.0) for row in bucket)
         rains.append(to_metric(bucket_rain, "rain", u))
+
+        bucket_co2 = [float(row["co2"]) for row in bucket if row["co2"] is not None]
+        co2_vals.append(int(round(sum(bucket_co2) / len(bucket_co2))) if bucket_co2 else None)
+
+        bucket_pm10 = [float(row["pm10_0"]) for row in bucket if row["pm10_0"] is not None]
+        pm10_vals.append(round(sum(bucket_pm10) / len(bucket_pm10), 1) if bucket_pm10 else None)
 
     return {
         "labels": labels,
         "temp": temps,
         "barometer": pressures,
         "rain": rains,
+        "co2": co2_vals,
+        "pm10": pm10_vals,
     }
 
 @app.get("/api/cam/latest")

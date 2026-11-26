@@ -3,9 +3,41 @@ let cachedHistory = null;
 let activeMetric = "temp";
 
 const METRIC_CONFIG = {
-  temp: { label: "Temperature (°C)", color: "#fb923c", type: "line" },
-  barometer: { label: "Barometer (hPa)", color: "#38bdf8", type: "line" },
-  rain: { label: "Rainfall (mm)", color: "#60a5fa", type: "bar" },
+  temp: {
+    label: "Temperature (°C)",
+    color: "#fb923c",
+    bg: "rgba(251, 146, 60, 0.14)",
+    type: "line",
+    beginAtZero: false,
+  },
+  barometer: {
+    label: "Barometer (hPa)",
+    color: "#38bdf8",
+    bg: "rgba(56, 189, 248, 0.14)",
+    type: "line",
+    beginAtZero: false,
+  },
+  rain: {
+    label: "Rainfall (mm)",
+    color: "#60a5fa",
+    bg: "rgba(96, 165, 250, 0.55)",
+    type: "bar",
+    beginAtZero: true,
+  },
+  co2: {
+    label: "CO₂ (ppm)",
+    color: "#34d399",
+    bg: "rgba(52, 211, 153, 0.14)",
+    type: "line",
+    beginAtZero: false,
+  },
+  pm10: {
+    label: "PM10 (µg/m³)",
+    color: "#a78bfa",
+    bg: "rgba(167, 139, 250, 0.14)",
+    type: "line",
+    beginAtZero: true,
+  },
 };
 
 function fmt(val, fallback = "--") {
@@ -128,20 +160,30 @@ function renderChart(metricKey) {
         label: cfg.label,
         data: cachedHistory[metricKey],
         borderColor: cfg.color,
-        backgroundColor: cfg.type === "bar" ? "rgba(96, 165, 250, 0.55)" : "rgba(56, 189, 248, 0.12)",
+        backgroundColor: cfg.bg,
         fill: cfg.type === "line",
+        spanGaps: true,
         tension: 0.35,
         pointRadius: 0,
+        pointHoverRadius: 4,
         borderWidth: 2,
       }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 }, grid: { color: "rgba(148,163,184,0.08)" } },
-        y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.08)" } },
+        x: {
+          ticks: { color: "#94a3b8", maxTicksLimit: 8 },
+          grid: { color: "rgba(148,163,184,0.08)" },
+        },
+        y: {
+          beginAtZero: cfg.beginAtZero,
+          ticks: { color: "#94a3b8" },
+          grid: { color: "rgba(148,163,184,0.08)" },
+        },
       },
     },
   });
