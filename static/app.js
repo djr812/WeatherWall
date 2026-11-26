@@ -34,6 +34,12 @@ const METRIC_CONFIG = {
     bg: "rgba(52, 211, 153, 0.14)",
     type: "line",
     beginAtZero: false,
+    suggestedMax: 850,
+    thresholds: [
+      { value: 800, label: "Good ≤ 800", color: "#34d399" },
+      { value: 1000, label: "Fair ≤ 1000", color: "#fbbf24" },
+      { value: 1500, label: "Poor ≤ 1500", color: "#fb923c" },
+    ],
   },
   pm10: {
     label: "PM10 (µg/m³)",
@@ -41,6 +47,61 @@ const METRIC_CONFIG = {
     bg: "rgba(167, 139, 250, 0.14)",
     type: "line",
     beginAtZero: true,
+    suggestedMax: 30,
+    thresholds: [
+      { value: 25, label: "Good ≤ 25", color: "#34d399" },
+      { value: 50, label: "Fair ≤ 50", color: "#fbbf24" },
+      { value: 100, label: "Poor ≤ 100", color: "#fb923c" },
+    ],
+  },
+};
+
+const thresholdLinesPlugin = {
+  id: "thresholdLines",
+  afterDatasetsDraw(chart, _args, pluginOptions) {
+    const lines = pluginOptions?.lines;
+    if (!lines || !lines.length) return;
+
+    const { ctx, chartArea, scales } = chart;
+    const yScale = scales.y;
+    if (!yScale) return;
+
+    ctx.save();
+    lines.forEach((line) => {
+      const y = yScale.getPixelForValue(line.value);
+      // Skip lines outside the visible y-axis range
+      if (y < chartArea.top + 2 || y > chartArea.bottom - 2) return;
+
+      // Dashed horizontal guide line
+      ctx.beginPath();
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = line.color;
+      ctx.moveTo(chartArea.left, y);
+      ctx.lineTo(chartArea.right, y);
+      ctx.stroke();
+
+      // Right-aligned dark pill label
+      ctx.setLineDash([]);
+      ctx.font = "600 11px system-ui, -apple-system, sans-serif";
+      const padX = 6;
+      const textW = ctx.measureText(line.label).width;
+      const boxW = textW + padX * 2;
+      const boxH = 18;
+      const boxX = chartArea.right - boxW - 6;
+      const boxY = Math.max(chartArea.top + 2, y - boxH - 3);
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxW, boxH, 5);
+      ctx.fill();
+
+      ctx.fillStyle = line.color;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(line.label, boxX + padX, boxY + boxH / 2 + 0.5);
+    });
+    ctx.restore();
   },
 };
 
@@ -160,6 +221,7 @@ function renderChart(metricKey) {
 
   trendChart = new Chart(ctx, {
     type: cfg.type,
+    plugins: [thresholdLinesPlugin],
     data: {
       labels: entry.data.labels,
       datasets: [{
@@ -179,7 +241,10 @@ function renderChart(metricKey) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: { display: false },
+        thresholdLines: { lines: cfg.thresholds || [] },
+      },
       scales: {
         x: {
           ticks: {
@@ -192,6 +257,7 @@ function renderChart(metricKey) {
         },
         y: {
           beginAtZero: cfg.beginAtZero,
+          suggestedMax: cfg.suggestedMax,
           ticks: { color: "#94a3b8" },
           grid: { color: "rgba(148,163,184,0.08)" },
         },
