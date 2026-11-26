@@ -1,13 +1,17 @@
+import asyncio
+import json
 import os
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import httpx
 import pymysql
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 load_dotenv()
 
@@ -21,8 +25,31 @@ TIMEZONE = ZoneInfo(os.getenv("TIMEZONE", "Australia/Brisbane"))
 CAM_IMAGE_DIR = os.path.expanduser(os.getenv("CAM_IMAGE_DIR", ""))
 TIMELAPSE_VIDEO_PATH = os.path.expanduser(os.getenv("TIMELAPSE_VIDEO_PATH", ""))
 
+WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY", "").strip()
+CAPITALS_CACHE_TTL = int(os.getenv("CAPITALS_CACHE_TTL", "900"))
+CAPITALS_CACHE_FILE = Path("/tmp/weatherwall_capitals_cache.json")
+
+# Adjust these only if Step 1 showed different column names in your archive table
+AQ_CO2_COL = "co2"
+AQ_PM10_COL = "pm10_0"
+
+AUSTRALIAN_CAPITALS = [
+    {"name": "Brisbane", "state": "QLD", "query": "Brisbane,Queensland,Australia"},
+    {"name": "Sydney", "state": "NSW", "query": "Sydney,New South Wales,Australia"},
+    {"name": "Melbourne", "state": "VIC", "query": "Melbourne,Victoria,Australia"},
+    {"name": "Canberra", "state": "ACT", "query": "Canberra,Australian Capital Territory,Australia"},
+    {"name": "Adelaide", "state": "SA", "query": "Adelaide,South Australia,Australia"},
+    {"name": "Perth", "state": "WA", "query": "Perth,Western Australia,Australia"},
+    {"name": "Hobart", "state": "TAS", "query": "Hobart,Tasmania,Australia"},
+    {"name": "Darwin", "state": "NT", "query": "Darwin,Northern Territory,Australia"},
+]
+
 app = FastAPI(title="Weather Wall API")
 
+def round_or_none(val, digits: int = 1):
+    if val is None:
+        return None
+    return round(float(val), digits) if digits > 0 else int(round(float(val)))
 
 def get_db():
     return pymysql.connect(
@@ -80,10 +107,12 @@ def get_current_weather():
         conn = get_db()
         with conn.cursor() as cur:
             # 1. Most recent archive record
-            cur.execute("""
+            cur.execute(f"""
                 SELECT dateTime, usUnits, outTemp, outHumidity, dewpoint,
                        barometer, windSpeed, windDir, windGust, rainRate,
-                       heatindex, windchill, UV, radiation
+                       heatindex, windchill, UV, radiation,
+                       {AQ_CO2_COL} AS co2,
+                       {AQ_PM10_COL} AS pm10_0
                 FROM archive
                 ORDER BY dateTime DESC
                 LIMIT 1
@@ -95,11 +124,13 @@ def get_current_weather():
             units = latest["usUnits"]
 
             # 2. Today's extremes and total rainfall
-            cur.execute("""
+            cur.execute(f"""
                 SELECT MIN(outTemp) AS min_temp,
                        MAX(outTemp) AS max_temp,
                        MAX(windGust) AS max_gust,
-                       SUM(rain) AS total_rain
+                       SUM(rain) AS total_rain,
+                       MAX({AQ_CO2_COL}) AS max_co2,
+                       MAX({AQ_PM10_COL}) AS max_pm10_0
                 FROM archive
                 WHERE dateTime >= %s
             """, (midnight_epoch,))
@@ -166,6 +197,10 @@ def get_current_weather():
         "rain_rate": to_metric(latest["rainRate"] or 0.0, "rain", units),
         "uv": round(float(latest["UV"]), 1) if latest["UV"] is not None else None,
         "solar": round(float(latest["radiation"]), 0) if latest["radiation"] is not None else None,
+        "co2": round_or_none(latest.get("co2"), 0),
+        "co2_max": round_or_none(today.get("max_co2"), 0),
+        "pm10_0": round_or_none(latest.get("pm10_0"), 1),
+        "pm10_0_max": round_or_none(today.get("max_pm10_0"), 1),
     }
 
 
@@ -241,6 +276,80 @@ def get_timelapse():
         headers={"Cache-Control": "public, max-age=3600"},
     )
 
+async def _fetch_one_capital(client: httpx.AsyncClient, city: dict):
+    url = "https://api.weatherapi.com/v1/forecast.json"
+    params = {
+        "key": WEATHERAPI_KEY,
+        "q": city["query"],
+        "days": 1,
+        "aqi": "no",
+        "alerts": "no",
+    }
+    resp = await client.get(url, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+
+    cur = data["current"]
+    day = data["forecast"]["forecastday"][0]["day"]
+
+    def fix_icon(icon_url: str) -> str:
+        if not icon_url:
+            return ""
+        return f"https:{icon_url}" if icon_url.startswith("//") else icon_url
+
+    return {
+        "name": city["name"],
+        "state": city["state"],
+        "temp_c": round(float(cur["temp_c"]), 1),
+        "condition": cur["condition"]["text"],
+        "icon": fix_icon(cur["condition"]["icon"]),
+        "min_c": round(float(day["mintemp_c"]), 0),
+        "max_c": round(float(day["maxtemp_c"]), 0),
+        "forecast_condition": day["condition"]["text"],
+        "rain_chance": int(day.get("daily_chance_of_rain", 0)),
+    }
+
+
+@app.get("/api/capitals")
+async def get_capitals():
+    if not WEATHERAPI_KEY:
+        raise HTTPException(status_code=503, detail="WEATHERAPI_KEY is not configured")
+
+    now = time.time()
+    cached = None
+
+    # Shared file cache so both Uvicorn workers stay within WeatherAPI limits
+    if CAPITALS_CACHE_FILE.is_file():
+        try:
+            cached = json.loads(CAPITALS_CACHE_FILE.read_text(encoding="utf-8"))
+            if now - cached.get("fetched_epoch", 0) < CAPITALS_CACHE_TTL:
+                return cached
+        except (OSError, ValueError):
+            cached = None
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        results = await asyncio.gather(
+            *(_fetch_one_capital(client, c) for c in AUSTRALIAN_CAPITALS),
+            return_exceptions=True,
+        )
+
+    cities = [r for r in results if isinstance(r, dict)]
+    if not cities:
+        if cached:
+            return cached
+        raise HTTPException(status_code=502, detail="Unable to fetch Australian capital weather")
+
+    payload = {
+        "fetched_epoch": now,
+        "updated_display": datetime.now(TIMEZONE).strftime("%I:%M %p"),
+        "cities": cities,
+    }
+    try:
+        CAPITALS_CACHE_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    except OSError:
+        pass
+
+    return payload
 
 # Serve static frontend files at the root path
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

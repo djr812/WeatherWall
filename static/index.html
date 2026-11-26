@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Weather Wall — Live Telemetry</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=3" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
-  <script src="/app.js" defer></script>
+  <script src="/app.js?v=3" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -131,6 +131,48 @@
       </div>
       <div class="chart-wrap">
         <canvas id="trend-chart"></canvas>
+      </div>
+    </section>
+
+    <!-- Air Quality Telemetry Card -->
+    <section class="card card-aqi">
+      <div class="card-header-row">
+        <div class="card-label">Air Quality</div>
+        <span class="badge aqi-badge" id="aqi-overall">--</span>
+      </div>
+
+      <div class="aqi-stack">
+        <div class="aqi-row">
+          <div>
+            <div class="aqi-name">CO₂ Concentration</div>
+            <div class="muted small">Today max: <span id="co2-max">--</span> ppm</div>
+          </div>
+          <div class="aqi-reading">
+            <span class="aqi-val" id="co2-value">--</span><small> ppm</small>
+            <span class="aqi-pill" id="co2-status">--</span>
+          </div>
+        </div>
+        <div class="aqi-row">
+          <div>
+            <div class="aqi-name">PM10 Air Pollution</div>
+            <div class="muted small">Today max: <span id="pm10-max">--</span> µg/m³</div>
+          </div>
+          <div class="aqi-reading">
+            <span class="aqi-val" id="pm10-value">--</span><small> µg/m³</small>
+            <span class="aqi-pill" id="pm10-status">--</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Australian Capital Cities Card -->
+    <section class="card card-capitals">
+      <div class="card-header-row">
+        <div class="card-label">Australian Capital Cities — Current &amp; Today's Forecast</div>
+        <span class="muted small">Updated: <span id="capitals-updated">--</span> · WeatherAPI</span>
+      </div>
+      <div class="capitals-grid" id="capitals-grid">
+        <div class="muted small">Loading capital city forecasts...</div>
       </div>
     </section>
 

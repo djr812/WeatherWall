@@ -12,6 +12,28 @@ function fmt(val, fallback = "--") {
   return val === null || val === undefined ? fallback : val;
 }
 
+function rateAirMetric(type, val) {
+  if (val === null || val === undefined) return { label: "--", cls: "" };
+  const n = Number(val);
+  if (type === "co2") {
+    if (n <= 800) return { label: "Good", cls: "lvl-good" };
+    if (n <= 1000) return { label: "Fair", cls: "lvl-fair" };
+    if (n <= 1500) return { label: "Poor", cls: "lvl-poor" };
+    return { label: "High", cls: "lvl-bad" };
+  }
+  // pm10
+  if (n <= 25) return { label: "Good", cls: "lvl-good" };
+  if (n <= 50) return { label: "Fair", cls: "lvl-fair" };
+  if (n <= 100) return { label: "Poor", cls: "lvl-poor" };
+  return { label: "Very Poor", cls: "lvl-bad" };
+}
+
+function setAqiBadge(id, rating) {
+  const el = document.getElementById(id);
+  el.textContent = rating.label;
+  el.className = `aqi-pill ${rating.cls}`;
+}
+
 async function fetchWeather() {
   const pill = document.getElementById("status-pill");
   const statusText = document.getElementById("status-text");
@@ -37,6 +59,24 @@ async function fetchWeather() {
     document.getElementById("rain-rate").textContent = fmt(d.rain_rate, "0.0");
     document.getElementById("uv-value").textContent = fmt(d.uv);
     document.getElementById("solar-value").textContent = fmt(d.solar);
+
+    document.getElementById("co2-value").textContent = fmt(d.co2);
+    document.getElementById("co2-max").textContent = fmt(d.co2_max);
+    document.getElementById("pm10-value").textContent = fmt(d.pm10_0);
+    document.getElementById("pm10-max").textContent = fmt(d.pm10_0_max);
+
+    const rCo2 = rateAirMetric("co2", d.co2);
+    const rPm10 = rateAirMetric("pm10", d.pm10_0);
+    setAqiBadge("co2-status", rCo2);
+    setAqiBadge("pm10-status", rPm10);
+
+    const severity = ["", "lvl-good", "lvl-fair", "lvl-poor", "lvl-bad"];
+    const worst = [rCo2, rPm10].reduce((a, b) =>
+      severity.indexOf(b.cls) > severity.indexOf(a.cls) ? b : a
+    );
+    const overall = document.getElementById("aqi-overall");
+    overall.textContent = worst.label;
+    overall.className = `badge aqi-badge ${worst.cls}`;
 
     document.getElementById("wind-speed").textContent = fmt(d.wind_speed, "0");
     document.getElementById("wind-gust").textContent = fmt(d.wind_gust, "0");
@@ -118,10 +158,75 @@ async function fetchHistory() {
   }
 }
 
+async function fetchCapitals() {
+  const grid = document.getElementById("capitals-grid");
+  try {
+    const res = await fetch("/api/capitals", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    document.getElementById("capitals-updated").textContent = data.updated_display || "--";
+    grid.innerHTML = "";
+
+    data.cities.forEach((city) => {
+      const tile = document.createElement("div");
+      tile.className = "capital-tile";
+
+      const top = document.createElement("div");
+      top.className = "capital-top";
+
+      const title = document.createElement("div");
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "capital-name";
+      nameSpan.textContent = city.name;
+      const stateSpan = document.createElement("span");
+      stateSpan.className = "capital-state";
+      stateSpan.textContent = city.state;
+      title.append(nameSpan, stateSpan);
+
+      const nowWrap = document.createElement("div");
+      nowWrap.className = "capital-now";
+      if (city.icon) {
+        const img = document.createElement("img");
+        img.src = city.icon;
+        img.alt = city.condition;
+        img.loading = "lazy";
+        nowWrap.appendChild(img);
+      }
+      const tempSpan = document.createElement("span");
+      tempSpan.className = "capital-temp";
+      tempSpan.textContent = `${city.temp_c}°`;
+      nowWrap.appendChild(tempSpan);
+
+      top.append(title, nowWrap);
+
+      const cond = document.createElement("div");
+      cond.className = "capital-cond";
+      cond.textContent = city.condition;
+
+      const forecast = document.createElement("div");
+      forecast.className = "capital-forecast";
+      const rangeSpan = document.createElement("span");
+      rangeSpan.textContent = `Today: ${city.min_c}° / ${city.max_c}°`;
+      const rainSpan = document.createElement("span");
+      rainSpan.textContent = `Rain: ${city.rain_chance}%`;
+      forecast.append(rangeSpan, rainSpan);
+
+      tile.append(top, cond, forecast);
+      grid.appendChild(tile);
+    });
+  } catch (err) {
+    console.error("Capitals fetch failed:", err);
+    grid.innerHTML = `<div class="muted small">Unable to load capital city forecasts.</div>`;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   fetchWeather();
   fetchHistory();
   refreshCam();
+  fetchCapitals();
+  setInterval(fetchCapitals, 15 * 60 * 1000);
 
   // Telemetry every 60s, Webcam and Charts every 5 minutes
   setInterval(fetchWeather, 60 * 1000);

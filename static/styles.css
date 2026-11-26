@@ -93,7 +93,9 @@ body {
 .card-cam       { grid-column: span 6; }
 .card-timelapse { grid-column: span 6; }
 .card-chart     { grid-column: span 7; }
-.card-station   { grid-column: span 5; }
+.card-aqi       { grid-column: span 5; }
+.card-capitals  { grid-column: span 12; }
+.card-station   { grid-column: span 12; }
 
 /* Hero Temp */
 .hero-temp-row { display: flex; align-items: baseline; gap: 0.2rem; }
@@ -189,8 +191,86 @@ body {
 .muted { color: var(--muted); }
 .small { font-size: 0.78rem; }
 
+/* Air Quality Card */
+.aqi-stack { display: flex; flex-direction: column; gap: 0.65rem; flex: 1; justify-content: center; }
+.aqi-row {
+  background: rgba(15, 23, 42, 0.45);
+  border-radius: 12px;
+  padding: 0.8rem 0.95rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+.aqi-name { font-size: 0.92rem; font-weight: 600; }
+.aqi-reading { display: flex; align-items: baseline; gap: 0.45rem; flex-wrap: wrap; justify-content: flex-end; }
+.aqi-val { font-size: 1.45rem; font-weight: 700; }
+.aqi-reading small { font-size: 0.78rem; color: var(--muted); }
+
+.aqi-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.lvl-good { background: rgba(52, 211, 153, 0.18); color: #34d399; }
+.lvl-fair { background: rgba(251, 191, 36, 0.18); color: #fbbf24; }
+.lvl-poor { background: rgba(251, 146, 60, 0.22); color: #fb923c; }
+.lvl-bad  { background: rgba(248, 113, 113, 0.22); color: #f87171; }
+
+/* Australian Capital Cities Grid */
+.capitals-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+.capital-tile {
+  background: rgba(15, 23, 42, 0.48);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.capital-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.capital-name { font-weight: 700; font-size: 0.98rem; }
+.capital-state { font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-left: 0.25rem; }
+.capital-now { display: flex; align-items: center; gap: 0.35rem; }
+.capital-now img { width: 34px; height: 34px; }
+.capital-temp { font-size: 1.45rem; font-weight: 700; }
+.capital-cond { font-size: 0.82rem; color: var(--text); }
+.capital-forecast {
+  margin-top: auto;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--surface-border);
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 /* Tablet & Mobile Responsive */
 @media (max-width: 1024px) {
   .card-hero, .card-wind, .card-metrics { grid-column: span 12; }
   .card-cam, .card-timelapse, .card-chart, .card-station { grid-column: span 12; }
+}
+
+/* Side-by-side station details on wide screens */
+@media (min-width: 1025px) {
+  .station-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+}
+@media (max-width: 1024px) {
+  .card-aqi, .card-capitals { grid-column: span 12; }
+  .capitals-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .capitals-grid { grid-template-columns: 1fr; }
 }
