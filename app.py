@@ -5,11 +5,12 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from typing import Literal
 
 import httpx
 import pymysql
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -205,8 +206,19 @@ def get_current_weather():
 
 
 @app.get("/api/history")
-def get_24h_history():
-    since_epoch = int((datetime.now(TIMEZONE) - timedelta(hours=24)).timestamp())
+def get_history(
+    window: Literal["24h", "7d"] = Query(default="24h", alias="range"),
+):
+    now_local = datetime.now(TIMEZONE)
+    if window == "7d":
+        since_epoch = int((now_local - timedelta(days=7)).timestamp())
+        max_points = 168
+        label_fmt = "%a %H:%M"
+    else:
+        since_epoch = int((now_local - timedelta(hours=24)).timestamp())
+        max_points = 96
+        label_fmt = "%H:%M"
+
     try:
         conn = get_db()
         with conn.cursor() as cur:
@@ -223,21 +235,32 @@ def get_24h_history():
     except pymysql.MySQLError as exc:
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
 
-    # Downsample slightly if archive interval is very short (keep ~96 points max)
-    step = max(1, len(rows) // 96)
+    step = max(1, len(rows) // max_points)
     labels, temps, pressures, rains, co2_vals, pm10_vals = [], [], [], [], [], []
 
     for i in range(0, len(rows), step):
         bucket = rows[i:i + step]
-        r = bucket[0]
-        u = r["usUnits"]
-        dt = datetime.fromtimestamp(r["dateTime"], tz=TIMEZONE)
-        labels.append(dt.strftime("%H:%M"))
-        temps.append(to_metric(r["outTemp"], "temp", u))
-        pressures.append(to_metric(r["barometer"], "pressure", u))
+        mid_row = bucket[len(bucket) // 2]
+        dt = datetime.fromtimestamp(mid_row["dateTime"], tz=TIMEZONE)
+        labels.append(dt.strftime(label_fmt))
 
-        bucket_rain = sum((row["rain"] or 0.0) for row in bucket)
-        rains.append(to_metric(bucket_rain, "rain", u))
+        bucket_temps = [
+            to_metric(row["outTemp"], "temp", row["usUnits"])
+            for row in bucket if row["outTemp"] is not None
+        ]
+        temps.append(round(sum(bucket_temps) / len(bucket_temps), 1) if bucket_temps else None)
+
+        bucket_press = [
+            to_metric(row["barometer"], "pressure", row["usUnits"])
+            for row in bucket if row["barometer"] is not None
+        ]
+        pressures.append(round(sum(bucket_press) / len(bucket_press), 1) if bucket_press else None)
+
+        bucket_rain = sum(
+            to_metric(row["rain"], "rain", row["usUnits"])
+            for row in bucket if row["rain"] is not None
+        )
+        rains.append(round(bucket_rain, 2))
 
         bucket_co2 = [float(row["co2"]) for row in bucket if row["co2"] is not None]
         co2_vals.append(int(round(sum(bucket_co2) / len(bucket_co2))) if bucket_co2 else None)
@@ -246,6 +269,7 @@ def get_24h_history():
         pm10_vals.append(round(sum(bucket_pm10) / len(bucket_pm10), 1) if bucket_pm10 else None)
 
     return {
+        "range": window,
         "labels": labels,
         "temp": temps,
         "barometer": pressures,

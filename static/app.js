@@ -1,6 +1,10 @@
 let trendChart = null;
-let cachedHistory = null;
 let activeMetric = "temp";
+let activeRange = "24h";
+
+const historyCache = {};
+
+const HISTORY_TTL_MS = 5 * 60 * 1000;
 
 const METRIC_CONFIG = {
   temp: {
@@ -145,7 +149,9 @@ function refreshCam() {
 }
 
 function renderChart(metricKey) {
-  if (!cachedHistory) return;
+  const entry = historyCache[activeRange];
+  if (!entry) return;
+
   activeMetric = metricKey;
   const cfg = METRIC_CONFIG[metricKey];
   const ctx = document.getElementById("trend-chart").getContext("2d");
@@ -155,10 +161,10 @@ function renderChart(metricKey) {
   trendChart = new Chart(ctx, {
     type: cfg.type,
     data: {
-      labels: cachedHistory.labels,
+      labels: entry.data.labels,
       datasets: [{
         label: cfg.label,
-        data: cachedHistory[metricKey],
+        data: entry.data[metricKey],
         borderColor: cfg.color,
         backgroundColor: cfg.bg,
         fill: cfg.type === "line",
@@ -176,7 +182,12 @@ function renderChart(metricKey) {
       plugins: { legend: { display: false } },
       scales: {
         x: {
-          ticks: { color: "#94a3b8", maxTicksLimit: 8 },
+          ticks: {
+            color: "#94a3b8",
+            autoSkip: true,
+            maxTicksLimit: activeRange === "7d" ? 7 : 8,
+            maxRotation: 0,
+          },
           grid: { color: "rgba(148,163,184,0.08)" },
         },
         y: {
@@ -189,14 +200,23 @@ function renderChart(metricKey) {
   });
 }
 
-async function fetchHistory() {
+async function fetchHistory(range = activeRange, force = false) {
+  const cached = historyCache[range];
+  const isFresh = cached && (Date.now() - cached.fetchedAt) < HISTORY_TTL_MS;
+
+  if (!force && isFresh) {
+    if (range === activeRange) renderChart(activeMetric);
+    return;
+  }
+
   try {
-    const res = await fetch("/api/history", { cache: "no-store" });
+    const res = await fetch(`/api/history?range=${encodeURIComponent(range)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    cachedHistory = await res.json();
-    renderChart(activeMetric);
+    const data = await res.json();
+    historyCache[range] = { data, fetchedAt: Date.now() };
+    if (range === activeRange) renderChart(activeMetric);
   } catch (err) {
-    console.error("History fetch failed:", err);
+    console.error(`History (${range}) fetch failed:`, err);
   }
 }
 
@@ -265,22 +285,37 @@ async function fetchCapitals() {
 
 document.addEventListener("DOMContentLoaded", () => {
   fetchWeather();
-  fetchHistory();
+  fetchHistory(activeRange, true);
   refreshCam();
   fetchCapitals();
-  setInterval(fetchCapitals, 15 * 60 * 1000);
 
-  // Telemetry every 60s, Webcam and Charts every 5 minutes
   setInterval(fetchWeather, 60 * 1000);
   setInterval(refreshCam, 5 * 60 * 1000);
-  setInterval(fetchHistory, 5 * 60 * 1000);
+  setInterval(() => fetchHistory(activeRange, true), HISTORY_TTL_MS);
+  setInterval(fetchCapitals, 15 * 60 * 1000);
 
-  document.getElementById("btn-refresh-cam").addEventListener("click", refreshCam);
+  document.getElementById("btn-refresh-cam")?.addEventListener("click", refreshCam);
+
+  document.querySelectorAll(".range-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nextRange = btn.dataset.range;
+      if (nextRange === activeRange) return;
+
+      activeRange = nextRange;
+      document.querySelectorAll(".range-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("chart-title").textContent =
+        nextRange === "7d" ? "7-Day Trends" : "24-Hour Trends";
+      fetchHistory(activeRange);
+    });
+  });
+
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
+      activeMetric = btn.dataset.metric;
       document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      renderChart(btn.dataset.metric);
+      renderChart(activeMetric);
     });
   });
 });
