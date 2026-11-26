@@ -27,8 +27,12 @@ CAM_IMAGE_DIR = os.path.expanduser(os.getenv("CAM_IMAGE_DIR", ""))
 TIMELAPSE_VIDEO_PATH = os.path.expanduser(os.getenv("TIMELAPSE_VIDEO_PATH", ""))
 
 WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY", "").strip()
+
 CAPITALS_CACHE_TTL = int(os.getenv("CAPITALS_CACHE_TTL", "900"))
 CAPITALS_CACHE_FILE = Path("/tmp/weatherwall_capitals_cache.json")
+
+RECORDS_CACHE_TTL = int(os.getenv("RECORDS_CACHE_TTL", "600"))
+RECORDS_CACHE_FILE = Path("/tmp/weatherwall_records_cache.json")
 
 # Adjust these only if Step 1 showed different column names in your archive table
 AQ_CO2_COL = "co2"
@@ -381,6 +385,195 @@ async def get_capitals():
     }
     try:
         CAPITALS_CACHE_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    except OSError:
+        pass
+
+    return payload
+
+def _fmt_ts(epoch, date_only: bool = False):
+    if epoch is None:
+        return "--"
+    dt = datetime.fromtimestamp(int(epoch), tz=TIMEZONE)
+    return dt.strftime("%d %b %Y") if date_only else dt.strftime("%d %b %Y, %I:%M %p")
+
+
+def _safe_one(cur, sql: str):
+    try:
+        cur.execute(sql)
+        return cur.fetchone()
+    except pymysql.MySQLError:
+        return None
+
+
+@app.get("/api/records")
+def get_all_time_records():
+    now = time.time()
+    if RECORDS_CACHE_FILE.is_file():
+        try:
+            cached = json.loads(RECORDS_CACHE_FILE.read_text(encoding="utf-8"))
+            if now - cached.get("fetched_epoch", 0) < RECORDS_CACHE_TTL:
+                return cached
+        except (OSError, ValueError):
+            pass
+
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            # Daily summaries inherit the archive table's unit system
+            unit_row = _safe_one(cur, "SELECT usUnits FROM archive ORDER BY dateTime DESC LIMIT 1")
+            if not unit_row:
+                raise HTTPException(status_code=404, detail="No WeeWX records found")
+            units = unit_row["usUnits"]
+
+            first_row = _safe_one(
+                cur, "SELECT MIN(dateTime) AS first_ts FROM archive_day_outTemp"
+            )
+            high_temp = _safe_one(cur, """
+                SELECT max AS val, maxtime AS ts
+                FROM archive_day_outTemp
+                WHERE max IS NOT NULL
+                ORDER BY max DESC, maxtime DESC
+                LIMIT 1
+            """)
+            low_temp = _safe_one(cur, """
+                SELECT min AS val, mintime AS ts
+                FROM archive_day_outTemp
+                WHERE min IS NOT NULL
+                ORDER BY min ASC, mintime DESC
+                LIMIT 1
+            """)
+            # archive_day_wind stores daily peak wind/gust alongside max_dir
+            high_gust = _safe_one(cur, """
+                SELECT max AS val, maxtime AS ts, max_dir AS dir_deg
+                FROM archive_day_wind
+                WHERE max IS NOT NULL
+                ORDER BY max DESC, maxtime DESC
+                LIMIT 1
+            """)
+            wettest_day = _safe_one(cur, """
+                SELECT sum AS val, dateTime AS ts
+                FROM archive_day_rain
+                WHERE sum IS NOT NULL AND sum > 0
+                ORDER BY sum DESC, dateTime DESC
+                LIMIT 1
+            """)
+            total_rain_row = _safe_one(cur, """
+                SELECT SUM(sum) AS total_rain
+                FROM archive_day_rain
+                WHERE sum IS NOT NULL
+            """)
+            high_rain_rate = _safe_one(cur, """
+                SELECT max AS val, maxtime AS ts
+                FROM archive_day_rainRate
+                WHERE max IS NOT NULL AND max > 0
+                ORDER BY max DESC, maxtime DESC
+                LIMIT 1
+            """)
+            low_baro = _safe_one(cur, """
+                SELECT min AS val, mintime AS ts
+                FROM archive_day_barometer
+                WHERE min IS NOT NULL AND min > 0
+                ORDER BY min ASC, mintime DESC
+                LIMIT 1
+            """)
+            high_baro = _safe_one(cur, """
+                SELECT max AS val, maxtime AS ts
+                FROM archive_day_barometer
+                WHERE max IS NOT NULL
+                ORDER BY max DESC, maxtime DESC
+                LIMIT 1
+            """)
+            high_uv = _safe_one(cur, """
+                SELECT max AS val, maxtime AS ts
+                FROM archive_day_UV
+                WHERE max IS NOT NULL AND max > 0
+                ORDER BY max DESC, maxtime DESC
+                LIMIT 1
+            """)
+            high_solar = _safe_one(cur, """
+                SELECT max AS val, maxtime AS ts
+                FROM archive_day_radiation
+                WHERE max IS NOT NULL AND max > 0
+                ORDER BY max DESC, maxtime DESC
+                LIMIT 1
+            """)
+        conn.close()
+    except pymysql.MySQLError as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    gust_dir_text = "--"
+    if high_gust and high_gust.get("dir_deg") is not None:
+        deg_int = int(round(float(high_gust["dir_deg"])))
+        gust_dir_text = f"{deg_to_cardinal(deg_int)} ({deg_int}°)"
+
+    since_text = "--"
+    if first_row and first_row.get("first_ts"):
+        since_text = datetime.fromtimestamp(int(first_row["first_ts"]), tz=TIMEZONE).strftime("%b %Y")
+
+    total_rain_mm = None
+    if total_rain_row and total_rain_row.get("total_rain") is not None:
+        total_rain_mm = round(to_metric(total_rain_row["total_rain"], "rain", units), 1)
+
+    payload = {
+        "fetched_epoch": now,
+        "records_since": since_text,
+        "lifetime_rain_mm": total_rain_mm,
+        "items": [
+            {
+                "label": "Highest Temp",
+                "value": f"{to_metric(high_temp['val'], 'temp', units)}°C" if high_temp else "--",
+                "meta": _fmt_ts(high_temp["ts"]) if high_temp else "--",
+                "tone": "warm",
+            },
+            {
+                "label": "Lowest Temp",
+                "value": f"{to_metric(low_temp['val'], 'temp', units)}°C" if low_temp else "--",
+                "meta": _fmt_ts(low_temp["ts"]) if low_temp else "--",
+                "tone": "cool",
+            },
+            {
+                "label": "Strongest Wind Gust",
+                "value": f"{to_metric(high_gust['val'], 'wind', units)} km/h" if high_gust else "--",
+                "sub": f"Direction: {gust_dir_text}",
+                "meta": _fmt_ts(high_gust["ts"]) if high_gust else "--",
+                "tone": "accent",
+            },
+            {
+                "label": "Wettest Day",
+                "value": f"{to_metric(wettest_day['val'], 'rain', units)} mm" if wettest_day else "--",
+                "meta": _fmt_ts(wettest_day["ts"], date_only=True) if wettest_day else "--",
+                "tone": "cool",
+            },
+            {
+                "label": "Peak Rain Rate",
+                "value": f"{to_metric(high_rain_rate['val'], 'rain', units)} mm/h" if high_rain_rate else "--",
+                "meta": _fmt_ts(high_rain_rate["ts"]) if high_rain_rate else "--",
+                "tone": "cool",
+            },
+            {
+                "label": "Lowest Barometer",
+                "value": f"{to_metric(low_baro['val'], 'pressure', units)} hPa" if low_baro else "--",
+                "meta": _fmt_ts(low_baro["ts"]) if low_baro else "--",
+                "tone": "warn",
+            },
+            {
+                "label": "Highest Barometer",
+                "value": f"{to_metric(high_baro['val'], 'pressure', units)} hPa" if high_baro else "--",
+                "meta": _fmt_ts(high_baro["ts"]) if high_baro else "--",
+                "tone": "accent",
+            },
+            {
+                "label": "Peak UV Index",
+                "value": f"{round(float(high_uv['val']), 1)} UV" if high_uv else "--",
+                "sub": f"Max Solar: {int(round(float(high_solar['val'])))} W/m²" if high_solar else "",
+                "meta": _fmt_ts(high_uv["ts"]) if high_uv else "--",
+                "tone": "warm",
+            },
+        ],
+    }
+
+    try:
+        RECORDS_CACHE_FILE.write_text(json.dumps(payload), encoding="utf-8")
     except OSError:
         pass
 

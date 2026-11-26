@@ -349,16 +349,72 @@ async function fetchCapitals() {
   }
 }
 
+async function fetchRecords() {
+  const grid = document.getElementById("records-grid");
+  const summary = document.getElementById("records-summary");
+
+  try {
+    const res = await fetch("/api/records", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const parts = [];
+    if (data.records_since && data.records_since !== "--") {
+      parts.push(`Since ${data.records_since}`);
+    }
+    if (data.lifetime_rain_mm !== null && data.lifetime_rain_mm !== undefined) {
+      parts.push(`Total Rain: ${Number(data.lifetime_rain_mm).toLocaleString()} mm`);
+    }
+    summary.textContent = parts.join(" · ") || "All-time WeeWX summary";
+
+    grid.innerHTML = "";
+    data.items.forEach((item) => {
+      const tile = document.createElement("div");
+      tile.className = "record-tile";
+
+      const label = document.createElement("div");
+      label.className = "record-label";
+      label.textContent = item.label;
+
+      const value = document.createElement("div");
+      value.className = `record-value tone-${item.tone || "accent"}`;
+      value.textContent = item.value;
+
+      tile.append(label, value);
+
+      if (item.sub) {
+        const sub = document.createElement("div");
+        sub.className = "record-sub";
+        sub.textContent = item.sub;
+        tile.appendChild(sub);
+      }
+
+      const meta = document.createElement("div");
+      meta.className = "record-meta";
+      meta.textContent = item.meta;
+      tile.appendChild(meta);
+
+      grid.appendChild(tile);
+    });
+  } catch (err) {
+    console.error("Records fetch failed:", err);
+    summary.textContent = "Unavailable";
+    grid.innerHTML = `<div class="muted small">Unable to load all-time station records.</div>`;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   fetchWeather();
   fetchHistory(activeRange, true);
   refreshCam();
   fetchCapitals();
+  fetchRecords();
 
   setInterval(fetchWeather, 60 * 1000);
   setInterval(refreshCam, 5 * 60 * 1000);
   setInterval(() => fetchHistory(activeRange, true), HISTORY_TTL_MS);
   setInterval(fetchCapitals, 15 * 60 * 1000);
+  setInterval(fetchRecords, 15 * 60 * 1000);
 
   document.getElementById("btn-refresh-cam")?.addEventListener("click", refreshCam);
 
