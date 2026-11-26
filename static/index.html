@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather Wall — Live Telemetry</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Weather Wall</h1>
+      <span class="subtitle">weather.djrogers.net.au</span>
+    </div>
+    <div class="status-pill" id="status-pill">
+      <span class="dot"></span>
+      <span id="status-text">Connecting...</span>
+      <span class="divider">•</span>
+      <span id="last-updated">--</span>
+    </div>
+  </header>
+
+  <main class="bento-grid">
+    <!-- Hero Temperature Card -->
+    <section class="card card-hero">
+      <div class="card-label">Outside Temperature</div>
+      <div class="hero-temp-row">
+        <span id="temp-value" class="hero-temp">--</span>
+        <span class="hero-unit">°C</span>
+      </div>
+      <div class="hero-meta">
+        <span>Feels like <strong id="feels-like">--</strong>°C</span>
+        <span>Dew point <strong id="dewpoint-value">--</strong>°C</span>
+      </div>
+      <div class="extremes-bar">
+        <div class="extreme-item">
+          <span class="muted">Today Low</span>
+          <strong class="cool" id="temp-low">--°C</strong>
+        </div>
+        <div class="extreme-item">
+          <span class="muted">Today High</span>
+          <strong class="warm" id="temp-high">--°C</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Wind Compass Card -->
+    <section class="card card-wind">
+      <div class="card-label">Wind &amp; Gusts</div>
+      <div class="wind-layout">
+        <div class="compass-wrap">
+          <svg viewBox="0 0 120 120" class="compass-svg" aria-label="Wind direction compass">
+            <circle cx="60" cy="60" r="52" class="compass-ring" />
+            <text x="60" y="18" class="compass-dir">N</text>
+            <text x="104" y="64" class="compass-dir">E</text>
+            <text x="60" y="110" class="compass-dir">S</text>
+            <text x="16" y="64" class="compass-dir">W</text>
+            <g id="wind-arrow" transform="rotate(0 60 60)">
+              <polygon points="60,24 67,56 60,48 53,56" class="compass-needle" />
+            </g>
+            <circle cx="60" cy="60" r="6" class="compass-hub" />
+          </svg>
+        </div>
+        <div class="wind-stats">
+          <div class="big-stat"><span id="wind-speed">--</span> <small>km/h</small></div>
+          <div class="wind-detail">Direction: <strong id="wind-dir-text">--</strong></div>
+          <div class="wind-detail">Gust: <strong id="wind-gust">--</strong> km/h</div>
+          <div class="wind-detail">Today Max: <strong id="wind-max-gust">--</strong> km/h</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compact Metrics Strip -->
+    <section class="card card-metrics">
+      <div class="metric-box">
+        <span class="card-label">Humidity</span>
+        <div class="metric-val"><span id="humidity-value">--</span><small>%</small></div>
+      </div>
+      <div class="metric-box">
+        <span class="card-label">Barometer</span>
+        <div class="metric-val"><span id="barometer-value">--</span><small> hPa</small></div>
+        <span class="badge" id="barometer-trend">Steady</span>
+      </div>
+      <div class="metric-box">
+        <span class="card-label">Rain Today</span>
+        <div class="metric-val"><span id="rain-today">--</span><small> mm</small></div>
+        <span class="muted small">Rate: <span id="rain-rate">0.0</span> mm/h</span>
+      </div>
+      <div class="metric-box">
+        <span class="card-label">UV / Solar</span>
+        <div class="metric-val"><span id="uv-value">--</span><small> UV</small></div>
+        <span class="muted small"><span id="solar-value">--</span> W/m²</span>
+      </div>
+    </section>
+
+    <!-- Weather Cam Live Snapshot (5-min refresh) -->
+    <section class="card card-cam">
+      <div class="card-header-row">
+        <div class="card-label">Weather Cam (5-Min Live Shot)</div>
+        <button id="btn-refresh-cam" class="mini-btn" type="button">Refresh</button>
+      </div>
+      <div class="media-frame">
+        <img id="cam-image" src="/api/cam/latest" alt="Live Weather Cam Snapshot" />
+      </div>
+      <div class="media-caption">Last refreshed: <span id="cam-timestamp">--</span></div>
+    </section>
+
+    <!-- Previous Day Timelapse Video -->
+    <section class="card card-timelapse">
+      <div class="card-label">Yesterday's Timelapse</div>
+      <div class="media-frame">
+        <video id="timelapse-video" controls preload="metadata" playsinline>
+          <source src="/api/cam/timelapse" type="video/mp4" />
+          Your browser does not support HTML5 video playback.
+        </video>
+      </div>
+      <div class="media-caption">Compiled from the previous 24 hours of 5-minute captures</div>
+    </section>
+
+    <!-- 24-Hour Interactive Trend Chart -->
+    <section class="card card-chart">
+      <div class="card-header-row">
+        <div class="card-label">24-Hour Trends</div>
+        <div class="chart-tabs">
+          <button class="tab-btn active" data-metric="temp" type="button">Temp</button>
+          <button class="tab-btn" data-metric="barometer" type="button">Pressure</button>
+          <button class="tab-btn" data-metric="rain" type="button">Rain</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="trend-chart"></canvas>
+      </div>
+    </section>
+
+    <!-- Station Instruments & Local Area Card -->
+    <section class="card card-station">
+      <div class="card-label">Station Instruments &amp; Local Area</div>
+      <div class="station-columns">
+        <div>
+          <h3>Collection Hardware</h3>
+          <ul class="clean-list">
+            <li><strong>Weather Station:</strong> Update with your station model (e.g., Ecowitt / Fine Offset / Davis)</li>
+            <li><strong>Telemetry Engine:</strong> WeeWX writing 5-minute archives to MySQL</li>
+            <li><strong>Weather Cam:</strong> Outdoor IP camera capturing 5-minute stills &amp; daily timelapse</li>
+            <li><strong>Sensors:</strong> Temperature, humidity, barometric pressure, ultrasonic/cup wind, tipping-bucket rain</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Local Area</h3>
+          <p class="area-desc">
+            Replace this paragraph with your existing local area description from NJAWA—elevation,
+            surrounding hills or creek valleys, prevailing wind corridors, and microclimate notes.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
