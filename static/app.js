@@ -265,6 +265,14 @@ async function fetchWeather() {
       }
     }
 
+    // Ferny Grove Sunrise & Sunset pill
+    setText("sunrise-time", fmt(d.sunrise));
+    setText("sunset-time", fmt(d.sunset));
+    const sunPill = document.getElementById("sun-pill");
+    if (sunPill && d.daylight) {
+      sunPill.title = `Ferny Grove daylight: ${d.daylight}`;
+    }
+
     setText("last-updated", d.updated_display);
 
     if (pill && statusText) {

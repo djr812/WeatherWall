@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from astral import LocationInfo
+from astral.sun import sun
 
 load_dotenv()
 
@@ -22,6 +24,15 @@ DB_NAME = os.getenv("DB_NAME", "weewx")
 DB_USER = os.getenv("DB_USER", "weatherwall")
 DB_PASS = os.getenv("DB_PASS", "")
 TIMEZONE = ZoneInfo(os.getenv("TIMEZONE", "Australia/Brisbane"))
+STATION_LAT = float(os.getenv("STATION_LAT", "-27.4028"))
+STATION_LON = float(os.getenv("STATION_LON", "152.9282"))
+STATION_LOCATION = LocationInfo(
+    "Ferny Grove",
+    "Australia",
+    "Australia/Brisbane",
+    STATION_LAT,
+    STATION_LON,
+)
 
 CAM_IMAGE_DIR = os.path.expanduser(os.getenv("CAM_IMAGE_DIR", ""))
 TIMELAPSE_VIDEO_PATH = os.path.expanduser(os.getenv("TIMELAPSE_VIDEO_PATH", ""))
@@ -224,6 +235,17 @@ def get_current_weather():
         lightning_last_time = last_dt.strftime("%d %b, %I:%M %p")
         lightning_last_age_min = max(0, int((now_local - last_dt).total_seconds() // 60))
 
+    solar_times = sun(
+        STATION_LOCATION.observer,
+        date=now_local.date(),
+        tzinfo=TIMEZONE,
+    )
+    sunrise_dt = solar_times["sunrise"]
+    sunset_dt = solar_times["sunset"]
+    daylight_secs = int((sunset_dt - sunrise_dt).total_seconds())
+    daylight_hrs, rem = divmod(daylight_secs, 3600)
+    daylight_mins = rem // 60
+
     return {
         "updated_iso": obs_time.isoformat(),
         "updated_display": obs_time.strftime("%a %d %b, %I:%M %p"),
@@ -256,6 +278,9 @@ def get_current_weather():
         "lightning_last_dist": lightning_last_dist,
         "lightning_last_time": lightning_last_time,
         "lightning_last_age_min": lightning_last_age_min,
+        "sunrise": sunrise_dt.strftime("%I:%M %p").lstrip("0"),
+        "sunset": sunset_dt.strftime("%I:%M %p").lstrip("0"),
+        "daylight": f"{daylight_hrs}h {daylight_mins:02d}m",
     }
 
 

@@ -22,6 +22,7 @@ body {
   padding: 1.25rem;
 }
 
+/*
 .topbar {
   max-width: 1400px;
   margin: 0 auto 1.25rem;
@@ -30,6 +31,67 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
+}
+*/
+
+/* Top Header 3-Column Alignment */
+header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+}
+header > :first-child { justify-self: start; }
+header > .sun-pill    { justify-self: center; }
+header > :last-child  { justify-self: end; }
+
+/* Centered Sunrise / Sunset Pill */
+.sun-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.42rem 1rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid var(--surface-border);
+  box-shadow: 0 4px 16px rgba(2, 6, 23, 0.35);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.sun-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.sun-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sun-rise .sun-icon { stroke: #fbbf24; }
+.sun-set .sun-icon  { stroke: #fb923c; }
+
+.sun-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.sun-pill strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.sun-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--surface-border);
 }
 
 .brand h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
@@ -463,4 +525,20 @@ body {
 
 @media (max-width: 1024px) {
   .card-lightning { grid-column: span 12; }
+}
+
+@media (max-width: 960px) {
+  header {
+    grid-template-columns: 1fr auto;
+    row-gap: 0.75rem;
+  }
+  header > .sun-pill {
+    grid-column: 1 / -1;
+    order: 3;
+    justify-self: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .sun-label { display: none; }
 }
