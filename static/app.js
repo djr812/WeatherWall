@@ -8,6 +8,9 @@ let activeRecordsPeriod = "all";
 const recordsCache = {};
 const RECORDS_TTL_MS = 10 * 60 * 1000;
 
+let sunTargetEpoch = null;
+let sunCountdownLabel = "Daylight left";
+
 const RECORDS_TITLES = {
   all: "All-Time Station Records",
   year: "This Year's Station Records",
@@ -130,6 +133,48 @@ function fmt(val, fallback = "--") {
 function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
+}
+
+function renderMoonSvg(phaseVal, phaseName) {
+  if (phaseVal === null || phaseVal === undefined) return "";
+  const t = (((Number(phaseVal) % 28) + 28) % 28) / 28;
+  const r = 9;
+  const cx = 12;
+  const cy = 12;
+  const illumRatio = (1 - Math.cos(t * 2 * Math.PI)) / 2;
+
+  let litShape = "";
+  if (illumRatio > 0.98) {
+    litShape = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#e2e8f0" />`;
+  } else if (illumRatio >= 0.02) {
+    // Southern Hemisphere orientation: waxing lit on LEFT, waning lit on RIGHT
+    const waxing = t < 0.5;
+    const gibbous = t > 0.25 && t < 0.75;
+    const rx = Math.abs(Math.cos(t * 2 * Math.PI)) * r;
+    const outerSweep = waxing ? 0 : 1;
+    const innerSweep = waxing === gibbous ? 0 : 1;
+    const terminator = rx < 0.2
+      ? `L ${cx} ${cy - r}`
+      : `A ${rx.toFixed(2)} ${r} 0 0 ${innerSweep} ${cx} ${cy - r}`;
+    litShape = `<path d="M ${cx} ${cy - r} A ${r} ${r} 0 0 ${outerSweep} ${cx} ${cy + r} ${terminator} Z" fill="#e2e8f0" />`;
+  }
+
+  return `
+    <svg viewBox="0 0 24 24" role="img" aria-label="${phaseName || "Moon phase"}">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#1e293b" stroke="#64748b" stroke-width="1.2" />
+      ${litShape}
+    </svg>
+  `;
+}
+
+function updateSunCountdown() {
+  if (!sunTargetEpoch) return;
+  const diffSec = Math.max(0, Math.floor(sunTargetEpoch - Date.now() / 1000));
+  const hrs = Math.floor(diffSec / 3600);
+  const mins = Math.floor((diffSec % 3600) / 60);
+  const formatted = hrs > 0 ? `${hrs}h ${String(mins).padStart(2, "0")}m` : `${mins}m`;
+  setText("sun-countdown-label", sunCountdownLabel);
+  setText("sun-countdown-value", formatted);
 }
 
 function rateAirMetric(type, val) {
@@ -265,9 +310,35 @@ async function fetchWeather() {
       }
     }
 
-    // Ferny Grove Sunrise & Sunset pill
+    // Ferny Grove Sunrise, Sunset, Countdown & Moon Phase pill
     setText("sunrise-time", fmt(d.sunrise));
     setText("sunset-time", fmt(d.sunset));
+
+    sunTargetEpoch = d.sun_target_epoch || null;
+    sunCountdownLabel = d.sun_countdown_label || "Daylight left";
+    const countdownWrap = document.getElementById("sun-countdown-wrap");
+    if (countdownWrap) {
+      countdownWrap.classList.toggle("is-night", d.sun_is_daylight === false);
+    }
+    if (sunTargetEpoch) {
+      updateSunCountdown();
+    } else {
+      setText("sun-countdown-label", sunCountdownLabel);
+      setText("sun-countdown-value", fmt(d.sun_countdown));
+    }
+
+    const moonIcon = document.getElementById("moon-icon");
+    if (moonIcon && d.moon_phase !== null && d.moon_phase !== undefined) {
+      moonIcon.innerHTML = renderMoonSvg(d.moon_phase, d.moon_phase_name);
+    }
+    setText("moon-label", d.moon_phase_name || "--");
+
+    const moonItem = document.getElementById("moon-item");
+    if (moonItem && d.moon_phase_name) {
+      const illumTxt = d.moon_illumination !== undefined ? ` · ${d.moon_illumination}% lit` : "";
+      moonItem.title = `${d.moon_phase_name}${illumTxt} (Southern Hemisphere view)`;
+    }
+
     const sunPill = document.getElementById("sun-pill");
     if (sunPill && d.daylight) {
       sunPill.title = `Ferny Grove daylight: ${d.daylight}`;
@@ -566,4 +637,5 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(() => fetchHistory(activeRange, true), HISTORY_TTL_MS);
   setInterval(() => fetchRecords(activeRecordsPeriod, true), 15 * 60 * 1000);
   setInterval(fetchCapitals, 15 * 60 * 1000);
+  setInterval(updateSunCountdown, 30 * 1000);
 });

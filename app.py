@@ -9,11 +9,12 @@ from typing import Literal
 
 import httpx
 import pymysql
+import math
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from astral import LocationInfo
+from astral import LocationInfo, moon
 from astral.sun import sun
 
 load_dotenv()
@@ -64,6 +65,33 @@ AUSTRALIAN_CAPITALS = [
 ]
 
 app = FastAPI(title="Weather Wall API")
+
+def _moon_phase_info(target_date) -> dict:
+    phase = float(moon.phase(target_date)) % 28.0
+    illumination = int(round((1.0 - math.cos(2.0 * math.pi * (phase / 28.0))) / 2.0 * 100))
+
+    if phase < 1.0 or phase >= 27.0:
+        name = "New Moon"
+    elif phase < 6.0:
+        name = "Waxing Crescent"
+    elif phase < 8.0:
+        name = "First Quarter"
+    elif phase < 13.0:
+        name = "Waxing Gibbous"
+    elif phase < 15.0:
+        name = "Full Moon"
+    elif phase < 20.0:
+        name = "Waning Gibbous"
+    elif phase < 22.0:
+        name = "Last Quarter"
+    else:
+        name = "Waning Crescent"
+
+    return {
+        "phase": round(phase, 2),
+        "name": name,
+        "illumination": illumination,
+    }
 
 def round_or_none(val, digits: int = 1):
     if val is None:
@@ -246,6 +274,31 @@ def get_current_weather():
     daylight_hrs, rem = divmod(daylight_secs, 3600)
     daylight_mins = rem // 60
 
+    if now_local < sunrise_dt:
+        sun_is_daylight = False
+        sun_countdown_label = "Sunrise in"
+        target_dt = sunrise_dt
+    elif now_local < sunset_dt:
+        sun_is_daylight = True
+        sun_countdown_label = "Daylight left"
+        target_dt = sunset_dt
+    else:
+        tomorrow_solar = sun(
+            STATION_LOCATION.observer,
+            date=(now_local + timedelta(days=1)).date(),
+            tzinfo=TIMEZONE,
+        )
+        sun_is_daylight = False
+        sun_countdown_label = "Sunrise in"
+        target_dt = tomorrow_solar["sunrise"]
+
+    remaining_secs = max(0, int((target_dt - now_local).total_seconds()))
+    rem_hrs, rem_mod = divmod(remaining_secs, 3600)
+    rem_mins = rem_mod // 60
+    sun_countdown = f"{rem_hrs}h {rem_mins:02d}m" if rem_hrs > 0 else f"{rem_mins}m"
+
+    moon_info = _moon_phase_info(now_local.date())
+
     return {
         "updated_iso": obs_time.isoformat(),
         "updated_display": obs_time.strftime("%a %d %b, %I:%M %p"),
@@ -281,6 +334,13 @@ def get_current_weather():
         "sunrise": sunrise_dt.strftime("%I:%M %p").lstrip("0"),
         "sunset": sunset_dt.strftime("%I:%M %p").lstrip("0"),
         "daylight": f"{daylight_hrs}h {daylight_mins:02d}m",
+        "sun_is_daylight": sun_is_daylight,
+        "sun_countdown_label": sun_countdown_label,
+        "sun_countdown": sun_countdown,
+        "sun_target_epoch": int(target_dt.timestamp()),
+        "moon_phase": moon_info["phase"],
+        "moon_phase_name": moon_info["name"],
+        "moon_illumination": moon_info["illumination"],
     }
 
 
