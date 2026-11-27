@@ -35,6 +35,9 @@ STATION_LOCATION = LocationInfo(
     STATION_LON,
 )
 
+CAM_NIGHT_PLACEHOLDER = Path(__file__).resolve().parent / "static" / "cam-night.svg"
+CAM_SOLAR_BUFFER = timedelta(minutes=15)
+
 CAM_IMAGE_DIR = os.path.expanduser(os.getenv("CAM_IMAGE_DIR", ""))
 TIMELAPSE_VIDEO_PATH = os.path.expanduser(os.getenv("TIMELAPSE_VIDEO_PATH", ""))
 
@@ -46,7 +49,6 @@ CAPITALS_CACHE_FILE = Path("/tmp/weatherwall_capitals_cache.json")
 RECORDS_CACHE_TTL = int(os.getenv("RECORDS_CACHE_TTL", "600"))
 RECORDS_CACHE_DIR = Path("/tmp")
 
-# Adjust these only if Step 1 showed different column names in your archive table
 AQ_CO2_COL = "co2"
 AQ_PM10_COL = "pm10_0"
 
@@ -65,6 +67,26 @@ AUSTRALIAN_CAPITALS = [
 ]
 
 app = FastAPI(title="Weather Wall API")
+
+def _cam_night_window(now_local: datetime):
+    today_solar = sun(
+        STATION_LOCATION.observer,
+        date=now_local.date(),
+        tzinfo=TIMEZONE,
+    )
+    cam_start = today_solar["sunrise"] - CAM_SOLAR_BUFFER
+    cam_end = today_solar["sunset"] + CAM_SOLAR_BUFFER
+
+    if now_local < cam_start:
+        return True, cam_start
+    if now_local >= cam_end:
+        tomorrow_solar = sun(
+            STATION_LOCATION.observer,
+            date=(now_local + timedelta(days=1)).date(),
+            tzinfo=TIMEZONE,
+        )
+        return True, tomorrow_solar["sunrise"] - CAM_SOLAR_BUFFER
+    return False, None
 
 def _moon_phase_info(target_date) -> dict:
     phase = float(moon.phase(target_date)) % 28.0
@@ -299,6 +321,13 @@ def get_current_weather():
 
     moon_info = _moon_phase_info(now_local.date())
 
+    cam_is_night, cam_resume_dt = _cam_night_window(now_local)
+    cam_resume_text = (
+        cam_resume_dt.strftime("%I:%M %p").lstrip("0")
+        if cam_resume_dt
+        else None
+    )
+
     return {
         "updated_iso": obs_time.isoformat(),
         "updated_display": obs_time.strftime("%a %d %b, %I:%M %p"),
@@ -341,6 +370,8 @@ def get_current_weather():
         "moon_phase": moon_info["phase"],
         "moon_phase_name": moon_info["name"],
         "moon_illumination": moon_info["illumination"],
+        "cam_is_night": cam_is_night,
+        "cam_resume": cam_resume_text,
     }
 
 
@@ -426,27 +457,39 @@ def get_history(
     }
 
 @app.get("/api/cam/latest")
-def get_latest_cam():
-    cam_dir = Path(CAM_IMAGE_DIR)
-    if not CAM_IMAGE_DIR or not cam_dir.is_dir():
-        return JSONResponse({"error": "Webcam directory not found"}, status_code=404)
+def get_latest_cam(preview: str | None = Query(default=None)):
+    now_local = datetime.now(TIMEZONE)
+    is_night, _ = _cam_night_window(now_local)
+    no_cache_headers = {"Cache-Control": "no-store, no-cache"}
 
-    snapshots = [
-        p for p in cam_dir.glob("capture_*.jpg")
-        if p.is_file() and p.stat().st_size > 0
-    ]
-    if not snapshots:
-        return JSONResponse({"error": "No webcam snapshots found"}, status_code=404)
+    if preview == "night" or is_night:
+        if CAM_NIGHT_PLACEHOLDER.is_file():
+            return FileResponse(
+                CAM_NIGHT_PLACEHOLDER,
+                media_type="image/svg+xml",
+                headers=no_cache_headers,
+            )
 
-    latest_img = max(snapshots, key=lambda p: p.stat().st_mtime)
-    return FileResponse(
-        latest_img,
-        media_type="image/jpeg",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "X-Cam-File": latest_img.name,
-        },
+    captures = sorted(
+        Path(CAM_IMAGE_DIR).glob("capture_*.jpg"),
+        key=lambda p: p.stat().st_mtime,
     )
+    if captures:
+        return FileResponse(
+            captures[-1],
+            media_type="image/jpeg",
+            headers=no_cache_headers,
+        )
+
+    # Graceful fallback if the daily timelapse script cleared images before the night cutoff
+    if CAM_NIGHT_PLACEHOLDER.is_file():
+        return FileResponse(
+            CAM_NIGHT_PLACEHOLDER,
+            media_type="image/svg+xml",
+            headers=no_cache_headers,
+        )
+
+    raise HTTPException(status_code=404, detail="No weather cam image available")
 
 @app.get("/api/cam/timelapse")
 def get_timelapse():

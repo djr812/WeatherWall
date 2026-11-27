@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Weather Cam resting overnight">
+  <defs>
+    <linearGradient id="nightSky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="55%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  
+  <rect width="1280" height="720" fill="url(#nightSky)" />
+  <circle cx="640" cy="250" r="190" fill="url(#moonGlow)" />
+
+  
+  <g fill="#cbd5e1" opacity="0.65">
+    <circle cx="170" cy="120" r="2.2" />
+    <circle cx="290" cy="185" r="1.5" />
+    <circle cx="420" cy="95" r="2" />
+    <circle cx="515" cy="155" r="1.4" />
+    <circle cx="775" cy="110" r="2.2" />
+    <circle cx="890" cy="175" r="1.6" />
+    <circle cx="1010" cy="105" r="2" />
+    <circle cx="1120" cy="195" r="1.8" />
+    <circle cx="220" cy="285" r="1.4" />
+    <circle cx="1060" cy="300" r="1.6" />
+  </g>
+
+  
+  <path d="M 656 178 A 66 66 0 1 0 704 292 A 52 52 0 1 1 656 178 Z" fill="#e2e8f0" />
+
+  
+  <path d="M0 575 Q220 505 460 555 T920 540 T1280 565 L1280 720 L0 720 Z" fill="#0b1120" opacity="0.85" />
+  <path d="M0 620 Q340 570 680 615 T1280 595 L1280 720 L0 720 Z" fill="#020617" />
+
+  
+  <text x="640" y="390" text-anchor="middle" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="38" font-weight="700" letter-spacing="0.5">
+    Weather Cam Offline Overnight
+  </text>
+  <text x="640" y="436" text-anchor="middle" fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500">
+    Live snapshots resume 15 minutes before sunrise
+  </text>
+</svg>

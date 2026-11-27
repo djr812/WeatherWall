@@ -11,6 +11,9 @@ const RECORDS_TTL_MS = 10 * 60 * 1000;
 let sunTargetEpoch = null;
 let sunCountdownLabel = "Daylight left";
 
+let camIsNight = false;
+let camResumeText = null;
+
 const RECORDS_TITLES = {
   all: "All-Time Station Records",
   year: "This Year's Station Records",
@@ -344,6 +347,18 @@ async function fetchWeather() {
       sunPill.title = `Ferny Grove daylight: ${d.daylight}`;
     }
 
+    const nextCamNight = Boolean(d.cam_is_night);
+    const camModeChanged = nextCamNight !== camIsNight;
+    camIsNight = nextCamNight;
+    camResumeText = d.cam_resume || null;
+    if (camIsNight) {
+      setText(
+        "cam-timestamp",
+        camResumeText ? `Night mode · Resumes ${camResumeText}` : "Night mode"
+      );
+    }
+    if (camModeChanged) refreshCam();
+
     setText("last-updated", d.updated_display);
 
     if (pill && statusText) {
@@ -365,7 +380,14 @@ async function fetchWeather() {
 function refreshCam() {
   const img = document.getElementById("cam-image");
   if (img) img.src = `/api/cam/latest?t=${Date.now()}`;
-  setText("cam-timestamp", new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  if (camIsNight) {
+    setText(
+      "cam-timestamp",
+      camResumeText ? `Night mode · Resumes ${camResumeText}` : "Night mode"
+    );
+  } else {
+    setText("cam-timestamp", new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
 }
 
 function renderChart(metricKey) {
