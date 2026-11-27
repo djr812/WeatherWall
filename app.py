@@ -727,5 +727,17 @@ def get_station_records(
 
     return payload
 
+FAVICON_PATH = Path(__file__).resolve().parent / "static" / "favicon.svg"
+
+@app.get("/favicon.ico", include_in_schema=False)
+def get_favicon():
+    if not FAVICON_PATH.is_file():
+        raise HTTPException(status_code=404, detail="Favicon not found")
+    return FileResponse(
+        FAVICON_PATH,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
 # Serve static frontend files at the root path
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
