@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Weather Wall — Live Telemetry</title>
-  <link rel="stylesheet" href="/styles.css?v=9" />
+  <link rel="stylesheet" href="/styles.css?v=10" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
   <script src="/app.js?v=9" defer></script>
 </head>
@@ -204,22 +204,45 @@
 
     <!-- Station Instruments & Local Area Card -->
     <section class="card card-station">
-      <div class="card-label">Station Instruments &amp; Local Area</div>
+      <div class="card-header-row">
+        <div class="card-label">Station Instruments &amp; Local Area</div>
+        <span class="muted small">Ferny Grove, Brisbane QLD 4055</span>
+      </div>
+
       <div class="station-columns">
         <div>
           <h3>Collection Hardware</h3>
           <ul class="clean-list">
-            <li><strong>Weather Station:</strong> Update with your station model (e.g., Ecowitt / Fine Offset / Davis)</li>
-            <li><strong>Telemetry Engine:</strong> WeeWX writing 5-minute archives to MySQL</li>
-            <li><strong>Weather Cam:</strong> Outdoor IP camera capturing 5-minute stills &amp; daily timelapse</li>
-            <li><strong>Sensors:</strong> Temperature, humidity, barometric pressure, ultrasonic/cup wind, tipping-bucket rain</li>
+            <li>
+              <strong>Gateway &amp; Array:</strong> Ecowitt GW3900 Wi-Fi Gateway (integrated indoor temp, humidity &amp; barometer probe) paired with wireless outdoor weather (WS69 and WH32) and air quality sensors (WH45)
+            </li>
+            <li>
+              <strong>Measured Telemetry:</strong> Outdoor temperature, humidity, dew point, barometric pressure, wind speed/direction/gusts, rainfall, UV/solar radiation, CO₂, and PM10
+            </li>
+            <li>
+              <strong>Weather Cam:</strong> Ecowitt HP10 WittCam (IP66 weatherproof, 150° wide-angle) capturing 5-minute snapshots and daily timelapses
+            </li>
+            <li>
+              <strong>Telemetry Pipeline:</strong> WeeWX logging 5-minute archives and daily summaries to MySQL, served by FastAPI behind Apache &amp; Cloudflare Tunnel
+            </li>
           </ul>
         </div>
+
         <div>
-          <h3>Local Area</h3>
+          <h3>Local Area — Ferny Grove</h3>
+          <div class="area-pills">
+            <span class="area-pill">15 km NW of Brisbane CBD</span>
+            <span class="area-pill">~85 m Elevation</span>
+            <span class="area-pill">D'Aguilar Range Foothills</span>
+            <span class="area-pill">Upper Kedron Brook</span>
+          </div>
           <p class="area-desc">
-            Replace this paragraph with your existing local area description from NJAWA—elevation,
-            surrounding hills or creek valleys, prevailing wind corridors, and microclimate notes.
+            Located in Brisbane's outer north-west against the eastern foothills of the D'Aguilar
+            Range and D'Aguilar National Park, Ferny Grove sits in the undulating upper catchment
+            of Kedron Brook. The surrounding hills and creek valleys create a greener, slightly
+            cooler microclimate than the inner city, experiencing a humid subtropical pattern with
+            warm, storm-active summers, afternoon north-easterly sea breezes, and crisp, mostly dry
+            winters.
           </p>
         </div>
       </div>

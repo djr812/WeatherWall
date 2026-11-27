@@ -363,6 +363,31 @@ body {
   color: var(--accent);
 }
 
+/* Station Instruments & Local Area refinements */
+.area-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.area-pill {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+}
+
+.clean-list li {
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+}
+
 /* Tablet & Mobile Responsive */
 @media (max-width: 1024px) {
   .records-grid { grid-template-columns: repeat(2, 1fr); }
