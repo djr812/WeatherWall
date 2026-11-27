@@ -339,6 +339,30 @@ body {
   color: var(--muted);
 }
 
+.records-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.period-btn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 7px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.period-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  color: var(--accent);
+}
+
 /* Tablet & Mobile Responsive */
 @media (max-width: 1024px) {
   .records-grid { grid-template-columns: repeat(2, 1fr); }

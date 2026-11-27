@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Weather Wall — Live Telemetry</title>
-  <link rel="stylesheet" href="/styles.css?v=8" />
+  <link rel="stylesheet" href="/styles.css?v=9" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
-  <script src="/app.js?v=8" defer></script>
+  <script src="/app.js?v=9" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -173,14 +173,21 @@
       </div>
     </section>
 
-    <!-- All-Time Station Records Card -->
+    <!-- Station Records Card -->
     <section class="card card-records">
       <div class="card-header-row">
-        <div class="card-label">All-Time Station Records</div>
-        <span class="muted small" id="records-summary">Loading station history...</span>
+        <div class="card-label" id="records-title">All-Time Station Records</div>
+        <div class="records-controls">
+          <span class="muted small" id="records-summary">Loading station history...</span>
+          <div class="range-toggle" role="group" aria-label="Station records period">
+            <button class="period-btn active" data-period="all" type="button">All-Time</button>
+            <button class="period-btn" data-period="year" type="button">This Year</button>
+            <button class="period-btn" data-period="month" type="button">This Month</button>
+          </div>
+        </div>
       </div>
       <div class="records-grid" id="records-grid">
-        <div class="muted small">Loading all-time statistics...</div>
+        <div class="muted small">Loading station records...</div>
       </div>
     </section>
 

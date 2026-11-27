@@ -32,7 +32,7 @@ CAPITALS_CACHE_TTL = int(os.getenv("CAPITALS_CACHE_TTL", "900"))
 CAPITALS_CACHE_FILE = Path("/tmp/weatherwall_capitals_cache.json")
 
 RECORDS_CACHE_TTL = int(os.getenv("RECORDS_CACHE_TTL", "600"))
-RECORDS_CACHE_FILE = Path("/tmp/weatherwall_records_cache.json")
+RECORDS_CACHE_DIR = Path("/tmp")
 
 # Adjust these only if Step 1 showed different column names in your archive table
 AQ_CO2_COL = "co2"
@@ -397,127 +397,170 @@ def _fmt_ts(epoch, date_only: bool = False):
     return dt.strftime("%d %b %Y") if date_only else dt.strftime("%d %b %Y, %I:%M %p")
 
 
-def _safe_one(cur, sql: str):
+def _safe_one(cur, sql: str, params: tuple = ()):
     try:
-        cur.execute(sql)
+        cur.execute(sql, params)
         return cur.fetchone()
     except pymysql.MySQLError:
         return None
 
 
 @app.get("/api/records")
-def get_all_time_records():
+def get_station_records(
+    period: Literal["all", "year", "month"] = Query(default="all"),
+):
+    now_local = datetime.now(TIMEZONE)
     now = time.time()
-    if RECORDS_CACHE_FILE.is_file():
+
+    if period == "year":
+        since_dt = now_local.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        since_epoch = int(since_dt.timestamp())
+        period_label = f"Year {now_local.strftime('%Y')}"
+        rain_label = "YTD Rain"
+    elif period == "month":
+        since_dt = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        since_epoch = int(since_dt.timestamp())
+        period_label = now_local.strftime("%B %Y")
+        rain_label = "MTD Rain"
+    else:
+        since_epoch = None
+        period_label = None
+        rain_label = "Total Rain"
+
+    cache_file = RECORDS_CACHE_DIR / f"weatherwall_records_{period}_cache.json"
+    if cache_file.is_file():
         try:
-            cached = json.loads(RECORDS_CACHE_FILE.read_text(encoding="utf-8"))
-            if now - cached.get("fetched_epoch", 0) < RECORDS_CACHE_TTL:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            if (
+                cached.get("since_epoch") == since_epoch
+                and now - cached.get("fetched_epoch", 0) < RECORDS_CACHE_TTL
+            ):
                 return cached
         except (OSError, ValueError):
             pass
 
+    date_clause = "AND dateTime >= %s" if since_epoch is not None else ""
+    params = (since_epoch,) if since_epoch is not None else ()
+
     try:
         conn = get_db()
         with conn.cursor() as cur:
-            # Daily summaries inherit the archive table's unit system
             unit_row = _safe_one(cur, "SELECT usUnits FROM archive ORDER BY dateTime DESC LIMIT 1")
             if not unit_row:
                 raise HTTPException(status_code=404, detail="No WeeWX records found")
             units = unit_row["usUnits"]
 
-            first_row = _safe_one(
-                cur, "SELECT MIN(dateTime) AS first_ts FROM archive_day_outTemp"
-            )
-            high_temp = _safe_one(cur, """
+            first_row = None
+            if period == "all":
+                first_row = _safe_one(
+                    cur, "SELECT MIN(dateTime) AS first_ts FROM archive_day_outTemp"
+                )
+
+            high_temp = _safe_one(cur, f"""
                 SELECT max AS val, maxtime AS ts
                 FROM archive_day_outTemp
-                WHERE max IS NOT NULL
+                WHERE max IS NOT NULL {date_clause}
                 ORDER BY max DESC, maxtime DESC
                 LIMIT 1
-            """)
-            low_temp = _safe_one(cur, """
+            """, params)
+
+            low_temp = _safe_one(cur, f"""
                 SELECT min AS val, mintime AS ts
                 FROM archive_day_outTemp
-                WHERE min IS NOT NULL
+                WHERE min IS NOT NULL {date_clause}
                 ORDER BY min ASC, mintime DESC
                 LIMIT 1
-            """)
-            # archive_day_wind stores daily peak wind/gust alongside max_dir
-            high_gust = _safe_one(cur, """
+            """, params)
+
+            high_gust = _safe_one(cur, f"""
                 SELECT max AS val, maxtime AS ts, max_dir AS dir_deg
                 FROM archive_day_wind
-                WHERE max IS NOT NULL
+                WHERE max IS NOT NULL {date_clause}
                 ORDER BY max DESC, maxtime DESC
                 LIMIT 1
-            """)
-            wettest_day = _safe_one(cur, """
+            """, params)
+
+            wettest_day = _safe_one(cur, f"""
                 SELECT sum AS val, dateTime AS ts
                 FROM archive_day_rain
-                WHERE sum IS NOT NULL AND sum > 0
+                WHERE sum IS NOT NULL AND sum > 0 {date_clause}
                 ORDER BY sum DESC, dateTime DESC
                 LIMIT 1
-            """)
-            total_rain_row = _safe_one(cur, """
+            """, params)
+
+            total_rain_row = _safe_one(cur, f"""
                 SELECT SUM(sum) AS total_rain
                 FROM archive_day_rain
-                WHERE sum IS NOT NULL
-            """)
-            high_rain_rate = _safe_one(cur, """
+                WHERE sum IS NOT NULL {date_clause}
+            """, params)
+
+            high_rain_rate = _safe_one(cur, f"""
                 SELECT max AS val, maxtime AS ts
                 FROM archive_day_rainRate
-                WHERE max IS NOT NULL AND max > 0
+                WHERE max IS NOT NULL AND max > 0 {date_clause}
                 ORDER BY max DESC, maxtime DESC
                 LIMIT 1
-            """)
-            low_baro = _safe_one(cur, """
+            """, params)
+
+            low_baro = _safe_one(cur, f"""
                 SELECT min AS val, mintime AS ts
                 FROM archive_day_barometer
-                WHERE min IS NOT NULL AND min > 0
+                WHERE min IS NOT NULL AND min > 0 {date_clause}
                 ORDER BY min ASC, mintime DESC
                 LIMIT 1
-            """)
-            high_baro = _safe_one(cur, """
+            """, params)
+
+            high_baro = _safe_one(cur, f"""
                 SELECT max AS val, maxtime AS ts
                 FROM archive_day_barometer
-                WHERE max IS NOT NULL
+                WHERE max IS NOT NULL {date_clause}
                 ORDER BY max DESC, maxtime DESC
                 LIMIT 1
-            """)
-            high_uv = _safe_one(cur, """
+            """, params)
+
+            high_uv = _safe_one(cur, f"""
                 SELECT max AS val, maxtime AS ts
                 FROM archive_day_UV
-                WHERE max IS NOT NULL AND max > 0
+                WHERE max IS NOT NULL AND max > 0 {date_clause}
                 ORDER BY max DESC, maxtime DESC
                 LIMIT 1
-            """)
-            high_solar = _safe_one(cur, """
+            """, params)
+
+            high_solar = _safe_one(cur, f"""
                 SELECT max AS val, maxtime AS ts
                 FROM archive_day_radiation
-                WHERE max IS NOT NULL AND max > 0
+                WHERE max IS NOT NULL AND max > 0 {date_clause}
                 ORDER BY max DESC, maxtime DESC
                 LIMIT 1
-            """)
+            """, params)
         conn.close()
     except pymysql.MySQLError as exc:
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    if period == "all":
+        since_text = "--"
+        if first_row and first_row.get("first_ts"):
+            since_text = datetime.fromtimestamp(int(first_row["first_ts"]), tz=TIMEZONE).strftime("%b %Y")
+        period_label = f"Since {since_text}"
 
     gust_dir_text = "--"
     if high_gust and high_gust.get("dir_deg") is not None:
         deg_int = int(round(float(high_gust["dir_deg"])))
         gust_dir_text = f"{deg_to_cardinal(deg_int)} ({deg_int}°)"
 
-    since_text = "--"
-    if first_row and first_row.get("first_ts"):
-        since_text = datetime.fromtimestamp(int(first_row["first_ts"]), tz=TIMEZONE).strftime("%b %Y")
-
     total_rain_mm = None
     if total_rain_row and total_rain_row.get("total_rain") is not None:
         total_rain_mm = round(to_metric(total_rain_row["total_rain"], "rain", units), 1)
 
+    no_rain_meta = "No rain recorded" if total_rain_mm == 0.0 else "--"
+
     payload = {
+        "period": period,
+        "since_epoch": since_epoch,
         "fetched_epoch": now,
-        "records_since": since_text,
-        "lifetime_rain_mm": total_rain_mm,
+        "period_label": period_label,
+        "rain_label": rain_label,
+        "period_rain_mm": total_rain_mm,
         "items": [
             {
                 "label": "Highest Temp",
@@ -540,14 +583,14 @@ def get_all_time_records():
             },
             {
                 "label": "Wettest Day",
-                "value": f"{to_metric(wettest_day['val'], 'rain', units)} mm" if wettest_day else "--",
-                "meta": _fmt_ts(wettest_day["ts"], date_only=True) if wettest_day else "--",
+                "value": f"{to_metric(wettest_day['val'], 'rain', units)} mm" if wettest_day else ("0.0 mm" if total_rain_mm == 0.0 else "--"),
+                "meta": _fmt_ts(wettest_day["ts"], date_only=True) if wettest_day else no_rain_meta,
                 "tone": "cool",
             },
             {
                 "label": "Peak Rain Rate",
-                "value": f"{to_metric(high_rain_rate['val'], 'rain', units)} mm/h" if high_rain_rate else "--",
-                "meta": _fmt_ts(high_rain_rate["ts"]) if high_rain_rate else "--",
+                "value": f"{to_metric(high_rain_rate['val'], 'rain', units)} mm/h" if high_rain_rate else ("0.0 mm/h" if total_rain_mm == 0.0 else "--"),
+                "meta": _fmt_ts(high_rain_rate["ts"]) if high_rain_rate else no_rain_meta,
                 "tone": "cool",
             },
             {
@@ -573,7 +616,7 @@ def get_all_time_records():
     }
 
     try:
-        RECORDS_CACHE_FILE.write_text(json.dumps(payload), encoding="utf-8")
+        cache_file.write_text(json.dumps(payload), encoding="utf-8")
     except OSError:
         pass
 

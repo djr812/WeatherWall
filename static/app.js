@@ -6,6 +6,17 @@ const historyCache = {};
 
 const HISTORY_TTL_MS = 5 * 60 * 1000;
 
+let activeRecordsPeriod = "all";
+
+const recordsCache = {};
+const RECORDS_TTL_MS = 10 * 60 * 1000;
+
+const RECORDS_TITLES = {
+  all: "All-Time Station Records",
+  year: "This Year's Station Records",
+  month: "This Month's Station Records",
+};
+
 const METRIC_CONFIG = {
   temp: {
     label: "Temperature (°C)",
@@ -349,57 +360,71 @@ async function fetchCapitals() {
   }
 }
 
-async function fetchRecords() {
+function renderRecords(data) {
   const grid = document.getElementById("records-grid");
   const summary = document.getElementById("records-summary");
 
+  const parts = [];
+  if (data.period_label) parts.push(data.period_label);
+  if (data.period_rain_mm !== null && data.period_rain_mm !== undefined) {
+    const label = data.rain_label || "Rain";
+    parts.push(`${label}: ${Number(data.period_rain_mm).toLocaleString()} mm`);
+  }
+  summary.textContent = parts.join(" · ") || "WeeWX summary";
+
+  grid.innerHTML = "";
+  data.items.forEach((item) => {
+    const tile = document.createElement("div");
+    tile.className = "record-tile";
+
+    const label = document.createElement("div");
+    label.className = "record-label";
+    label.textContent = item.label;
+
+    const value = document.createElement("div");
+    value.className = `record-value tone-${item.tone || "accent"}`;
+    value.textContent = item.value;
+
+    tile.append(label, value);
+
+    if (item.sub) {
+      const sub = document.createElement("div");
+      sub.className = "record-sub";
+      sub.textContent = item.sub;
+      tile.appendChild(sub);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "record-meta";
+    meta.textContent = item.meta;
+    tile.appendChild(meta);
+
+    grid.appendChild(tile);
+  });
+}
+
+async function fetchRecords(period = activeRecordsPeriod, force = false) {
+  const cached = recordsCache[period];
+  const isFresh = cached && (Date.now() - cached.fetchedAt) < RECORDS_TTL_MS;
+
+  if (!force && isFresh) {
+    if (period === activeRecordsPeriod) renderRecords(cached.data);
+    return;
+  }
+
   try {
-    const res = await fetch("/api/records", { cache: "no-store" });
+    const res = await fetch(`/api/records?period=${encodeURIComponent(period)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-
-    const parts = [];
-    if (data.records_since && data.records_since !== "--") {
-      parts.push(`Since ${data.records_since}`);
-    }
-    if (data.lifetime_rain_mm !== null && data.lifetime_rain_mm !== undefined) {
-      parts.push(`Total Rain: ${Number(data.lifetime_rain_mm).toLocaleString()} mm`);
-    }
-    summary.textContent = parts.join(" · ") || "All-time WeeWX summary";
-
-    grid.innerHTML = "";
-    data.items.forEach((item) => {
-      const tile = document.createElement("div");
-      tile.className = "record-tile";
-
-      const label = document.createElement("div");
-      label.className = "record-label";
-      label.textContent = item.label;
-
-      const value = document.createElement("div");
-      value.className = `record-value tone-${item.tone || "accent"}`;
-      value.textContent = item.value;
-
-      tile.append(label, value);
-
-      if (item.sub) {
-        const sub = document.createElement("div");
-        sub.className = "record-sub";
-        sub.textContent = item.sub;
-        tile.appendChild(sub);
-      }
-
-      const meta = document.createElement("div");
-      meta.className = "record-meta";
-      meta.textContent = item.meta;
-      tile.appendChild(meta);
-
-      grid.appendChild(tile);
-    });
+    recordsCache[period] = { data, fetchedAt: Date.now() };
+    if (period === activeRecordsPeriod) renderRecords(data);
   } catch (err) {
-    console.error("Records fetch failed:", err);
-    summary.textContent = "Unavailable";
-    grid.innerHTML = `<div class="muted small">Unable to load all-time station records.</div>`;
+    console.error(`Records (${period}) fetch failed:`, err);
+    if (period === activeRecordsPeriod) {
+      document.getElementById("records-summary").textContent = "Unavailable";
+      document.getElementById("records-grid").innerHTML =
+        `<div class="muted small">Unable to load station records.</div>`;
+    }
   }
 }
 
@@ -408,13 +433,13 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchHistory(activeRange, true);
   refreshCam();
   fetchCapitals();
-  fetchRecords();
+  fetchRecords(activeRecordsPeriod, true);
 
   setInterval(fetchWeather, 60 * 1000);
   setInterval(refreshCam, 5 * 60 * 1000);
   setInterval(() => fetchHistory(activeRange, true), HISTORY_TTL_MS);
   setInterval(fetchCapitals, 15 * 60 * 1000);
-  setInterval(fetchRecords, 15 * 60 * 1000);
+  setInterval(() => fetchRecords(activeRecordsPeriod, true), 15 * 60 * 1000);
 
   document.getElementById("btn-refresh-cam")?.addEventListener("click", refreshCam);
 
@@ -432,12 +457,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
+  document.querySelectorAll(".period-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      activeMetric = btn.dataset.metric;
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      const nextPeriod = btn.dataset.period;
+      if (nextPeriod === activeRecordsPeriod) return;
+
+      activeRecordsPeriod = nextPeriod;
+      document.querySelectorAll(".period-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      renderChart(activeMetric);
+      document.getElementById("records-title").textContent =
+        RECORDS_TITLES[nextPeriod] || "Station Records";
+      fetchRecords(activeRecordsPeriod);
     });
   });
 });
