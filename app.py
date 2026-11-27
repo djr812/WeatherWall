@@ -328,6 +328,20 @@ def get_current_weather():
         else None
     )
 
+    timelapse_mtime = None
+    timelapse_updated = None
+    try:
+        tl_path = Path(TIMELAPSE_VIDEO_PATH)
+        if tl_path.is_file():
+            tl_stat = tl_path.stat()
+            # Wait 30s after the last write so an in-progress 8pm encode finishes first
+            if tl_stat.st_size > 0 and (now_local.timestamp() - tl_stat.st_mtime) >= 30:
+                timelapse_mtime = int(tl_stat.st_mtime)
+                tl_dt = datetime.fromtimestamp(tl_stat.st_mtime, tz=TIMEZONE)
+                timelapse_updated = tl_dt.strftime("%d %b, %I:%M %p")
+    except OSError:
+        pass
+
     return {
         "updated_iso": obs_time.isoformat(),
         "updated_display": obs_time.strftime("%a %d %b, %I:%M %p"),
@@ -372,6 +386,8 @@ def get_current_weather():
         "moon_illumination": moon_info["illumination"],
         "cam_is_night": cam_is_night,
         "cam_resume": cam_resume_text,
+        "timelapse_mtime": timelapse_mtime,
+        "timelapse_updated": timelapse_updated,
     }
 
 

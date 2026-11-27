@@ -14,6 +14,10 @@ let sunCountdownLabel = "Daylight left";
 let camIsNight = false;
 let camResumeText = null;
 
+let loadedTimelapseVersion = null;
+let pendingTimelapseVersion = null;
+let lastFallbackReloadDate = null;
+
 const RECORDS_TITLES = {
   all: "All-Time Station Records",
   year: "This Year's Station Records",
@@ -359,6 +363,11 @@ async function fetchWeather() {
     }
     if (camModeChanged) refreshCam();
 
+    checkTimelapseUpdate(d.timelapse_mtime);
+    if (d.timelapse_updated) {
+      setText("timelapse-updated", d.timelapse_updated);
+    }
+
     setText("last-updated", d.updated_display);
 
     if (pill && statusText) {
@@ -387,6 +396,91 @@ function refreshCam() {
     );
   } else {
     setText("cam-timestamp", new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
+}
+
+function getTimelapseBaseUrl(video) {
+  const source = video.querySelector("source");
+  const raw = (
+    source?.getAttribute("src") ||
+    video.getAttribute("src") ||
+    "/api/timelapse"
+  ).split("?")[0];
+  return raw || "/api/timelapse";
+}
+
+function applyTimelapseVersion(version) {
+  const video =
+    document.getElementById("timelapse-video") ||
+    document.querySelector(".card-timelapse video");
+  if (!video || !version) return;
+
+  const versionStr = String(version);
+
+  // Defer reload if someone is actively watching the current timelapse
+  const isPlaying = !video.paused && !video.ended && video.readyState > 2;
+  if (isPlaying) {
+    if (pendingTimelapseVersion !== versionStr) {
+      pendingTimelapseVersion = versionStr;
+      video.addEventListener(
+        "ended",
+        () => {
+          if (pendingTimelapseVersion) {
+            const next = pendingTimelapseVersion;
+            pendingTimelapseVersion = null;
+            applyTimelapseVersion(next);
+          }
+        },
+        { once: true }
+      );
+    }
+    return;
+  }
+
+  const baseUrl = getTimelapseBaseUrl(video);
+  const nextUrl = `${baseUrl}?v=${encodeURIComponent(versionStr)}`;
+  const source = video.querySelector("source");
+
+  if (source) {
+    source.setAttribute("src", nextUrl);
+    video.removeAttribute("src");
+  } else {
+    video.setAttribute("src", nextUrl);
+  }
+
+  loadedTimelapseVersion = versionStr;
+  pendingTimelapseVersion = null;
+  video.load();
+}
+
+function checkTimelapseUpdate(timelapseMtime) {
+  // Primary path: reload automatically whenever latest_tl.mp4 gets a new mtime
+  if (timelapseMtime !== null && timelapseMtime !== undefined) {
+    const version = String(timelapseMtime);
+    if (loadedTimelapseVersion !== version) {
+      applyTimelapseVersion(version);
+    }
+    return;
+  }
+
+  // Fallback path (if app.py omits timelapse_mtime): reload once after 8:10 PM Brisbane time
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Brisbane",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const getPart = (type) => parts.find((p) => p.type === type)?.value || "00";
+  const todayKey = `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+  const minutesNow = Number(getPart("hour")) * 60 + Number(getPart("minute"));
+
+  if (minutesNow >= 20 * 60 + 10 && lastFallbackReloadDate !== todayKey) {
+    lastFallbackReloadDate = todayKey;
+    applyTimelapseVersion(Date.now());
   }
 }
 
