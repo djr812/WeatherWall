@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Weather Wall — Live Telemetry</title>
-  <link rel="stylesheet" href="/styles.css?v=10" />
+  <link rel="stylesheet" href="/styles.css?v=11" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
-  <script src="/app.js?v=9" defer></script>
+  <script src="/app.js?v=12" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -168,6 +168,50 @@
           <div class="aqi-reading">
             <span class="aqi-val" id="pm10-value">--</span><small> µg/m³</small>
             <span class="aqi-pill" id="pm10-status">--</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lightning Activity Card -->
+    <section class="card card-lightning">
+      <div class="card-header-row">
+        <div class="card-label">Lightning Activity</div>
+        <span class="badge aqi-badge lvl-good" id="lgt-status">All Clear</span>
+      </div>
+
+      <div class="lgt-meter">
+        <div class="lgt-track">
+          <span class="lgt-marker" id="lgt-marker" hidden></span>
+        </div>
+        <div class="lgt-scale">
+          <span>0 km</span>
+          <span>10 km</span>
+          <span>25 km</span>
+          <span>40 km</span>
+        </div>
+      </div>
+
+      <div class="aqi-stack">
+        <div class="aqi-row">
+          <div>
+            <div class="aqi-name">Last Detected Strike</div>
+            <div class="muted small" id="lgt-last-time">No strikes in last 30 days</div>
+          </div>
+          <div class="aqi-reading">
+            <span class="aqi-val" id="lgt-last-dist">--</span><small> km</small>
+          </div>
+        </div>
+
+        <div class="aqi-row">
+          <div>
+            <div class="aqi-name">Strikes Today</div>
+            <div class="muted small">
+              Last hr: <span id="lgt-1h">0</span> · Closest: <span id="lgt-closest">--</span>
+            </div>
+          </div>
+          <div class="aqi-reading">
+            <span class="aqi-val" id="lgt-today">0</span>
           </div>
         </div>
       </div>

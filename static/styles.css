@@ -92,8 +92,10 @@ body {
 .card-metrics   { grid-column: span 4; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .card-cam       { grid-column: span 6; }
 .card-timelapse { grid-column: span 6; }
-.card-chart     { grid-column: span 7; }
-.card-aqi       { grid-column: span 5; }
+.card-chart     { grid-column: span 12; }
+.card-aqi       { grid-column: span 6; }
+.card-lightning { grid-column: span 6; }
+.card-records   { grid-column: span 12; }
 .card-capitals  { grid-column: span 12; }
 .card-station   { grid-column: span 12; }
 
@@ -388,6 +390,52 @@ body {
   padding: 0.55rem 0.75rem;
 }
 
+/* Lightning Proximity Meter */
+.lgt-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.lgt-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(248, 113, 113, 0.75) 0%,
+    rgba(251, 146, 60, 0.7) 25%,
+    rgba(251, 191, 36, 0.55) 62%,
+    rgba(56, 189, 248, 0.35) 100%
+  );
+  border: 1px solid var(--surface-border);
+}
+
+.lgt-marker {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #0b1120;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.95);
+  transform: translate(-50%, -50%);
+  transition: left 0.5s ease, opacity 0.3s ease;
+}
+
+.lgt-marker.dimmed {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.lgt-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 /* Tablet & Mobile Responsive */
 @media (max-width: 1024px) {
   .records-grid { grid-template-columns: repeat(2, 1fr); }
@@ -411,4 +459,8 @@ body {
 }
 @media (max-width: 600px) {
   .capitals-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1024px) {
+  .card-lightning { grid-column: span 12; }
 }

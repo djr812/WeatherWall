@@ -38,6 +38,9 @@ RECORDS_CACHE_DIR = Path("/tmp")
 AQ_CO2_COL = "co2"
 AQ_PM10_COL = "pm10_0"
 
+LIGHTNING_DIST_COL = "lightning_distance"
+LIGHTNING_COUNT_COL = "lightning_strike_count"
+
 AUSTRALIAN_CAPITALS = [
     {"name": "Brisbane", "state": "QLD", "query": "Brisbane,Queensland,Australia"},
     {"name": "Sydney", "state": "NSW", "query": "Sydney,New South Wales,Australia"},
@@ -90,6 +93,8 @@ def to_metric(val, kind: str, us_units: int):
         if us_units == 16:
             return round(val * 10.0, 2)
         return round(val, 2)
+    if kind == "distance":
+        return round(val * 1.60934, 1) if us_units == 1 else round(val, 1)
     return round(val, 1)
 
 
@@ -107,6 +112,8 @@ def get_current_weather():
     midnight_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     midnight_epoch = int(midnight_local.timestamp())
     three_hours_ago = int((now_local - timedelta(hours=3)).timestamp())
+    one_hour_ago = int((now_local - timedelta(hours=1)).timestamp())
+    thirty_days_ago = int((now_local - timedelta(days=30)).timestamp())
 
     try:
         conn = get_db()
@@ -135,7 +142,12 @@ def get_current_weather():
                        MAX(windGust) AS max_gust,
                        SUM(rain) AS total_rain,
                        MAX({AQ_CO2_COL}) AS max_co2,
-                       MAX({AQ_PM10_COL}) AS max_pm10_0
+                       MAX({AQ_PM10_COL}) AS max_pm10_0,
+                       SUM(COALESCE({LIGHTNING_COUNT_COL}, 0)) AS lightning_today,
+                       MIN(CASE
+                           WHEN {LIGHTNING_COUNT_COL} > 0 AND {LIGHTNING_DIST_COL} > 0
+                           THEN {LIGHTNING_DIST_COL}
+                       END) AS lightning_closest_today
                 FROM archive
                 WHERE dateTime >= %s
             """, (midnight_epoch,))
@@ -150,6 +162,24 @@ def get_current_weather():
                 LIMIT 1
             """, (three_hours_ago,))
             past = cur.fetchone()
+
+            # 4. Lightning strikes in the last 60 minutes
+            cur.execute(f"""
+                SELECT SUM(COALESCE({LIGHTNING_COUNT_COL}, 0)) AS strikes_1h
+                FROM archive
+                WHERE dateTime >= %s
+            """, (one_hour_ago,))
+            lgt_1h = cur.fetchone() or {}
+
+            # 5. Most recent lightning strike (capped at 30 days to keep queries instant)
+            cur.execute(f"""
+                SELECT dateTime, usUnits, {LIGHTNING_DIST_COL} AS dist
+                FROM archive
+                WHERE dateTime >= %s AND {LIGHTNING_COUNT_COL} > 0
+                ORDER BY dateTime DESC
+                LIMIT 1
+            """, (thirty_days_ago,))
+            last_strike = cur.fetchone()
         conn.close()
     except pymysql.MySQLError as exc:
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
@@ -180,6 +210,20 @@ def get_current_weather():
     obs_time = datetime.fromtimestamp(latest["dateTime"], tz=TIMEZONE)
     age_minutes = max(0, int((now_local - obs_time).total_seconds() // 60))
 
+    lightning_today = int(round(float(today.get("lightning_today") or 0)))
+    lightning_1h = int(round(float(lgt_1h.get("strikes_1h") or 0)))
+    lightning_closest_today = to_metric(today.get("lightning_closest_today"), "distance", units)
+
+    lightning_last_dist = None
+    lightning_last_time = None
+    lightning_last_age_min = None
+    if last_strike:
+        if last_strike["dist"] is not None and float(last_strike["dist"]) > 0:
+            lightning_last_dist = to_metric(last_strike["dist"], "distance", last_strike["usUnits"])
+        last_dt = datetime.fromtimestamp(int(last_strike["dateTime"]), tz=TIMEZONE)
+        lightning_last_time = last_dt.strftime("%d %b, %I:%M %p")
+        lightning_last_age_min = max(0, int((now_local - last_dt).total_seconds() // 60))
+
     return {
         "updated_iso": obs_time.isoformat(),
         "updated_display": obs_time.strftime("%a %d %b, %I:%M %p"),
@@ -206,6 +250,12 @@ def get_current_weather():
         "co2_max": round_or_none(today.get("max_co2"), 0),
         "pm10_0": round_or_none(latest.get("pm10_0"), 1),
         "pm10_0_max": round_or_none(today.get("max_pm10_0"), 1),
+        "lightning_today": lightning_today,
+        "lightning_1h": lightning_1h,
+        "lightning_closest_today": lightning_closest_today,
+        "lightning_last_dist": lightning_last_dist,
+        "lightning_last_time": lightning_last_time,
+        "lightning_last_age_min": lightning_last_age_min,
     }
 
 
