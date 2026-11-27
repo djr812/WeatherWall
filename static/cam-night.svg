@@ -40,7 +40,15 @@
   <text x="640" y="390" text-anchor="middle" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="38" font-weight="700" letter-spacing="0.5">
     Weather Cam Offline Overnight
   </text>
-  <text x="640" y="436" text-anchor="middle" fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500">
-    Live snapshots resume 15 minutes before sunrise
+  <text
+    x="640"
+    y="436"
+    text-anchor="middle"
+    fill="#94a3b8"
+    font-family="system-ui, -apple-system, sans-serif"
+    font-size="22"
+    font-weight="500"
+  >
+    {{RESUME_MESSAGE}}
   </text>
 </svg>

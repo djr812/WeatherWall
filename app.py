@@ -12,7 +12,7 @@ import pymysql
 import math
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from astral import LocationInfo, moon
 from astral.sun import sun
@@ -87,6 +87,28 @@ def _cam_night_window(now_local: datetime):
         )
         return True, tomorrow_solar["sunrise"] - CAM_SOLAR_BUFFER
     return False, None
+
+def _render_night_cam_svg(now_local: datetime, resume_dt: datetime | None) -> Response:
+    if resume_dt is None:
+        tomorrow_solar = sun(
+            STATION_LOCATION.observer,
+            date=(now_local + timedelta(days=1)).date(),
+            tzinfo=TIMEZONE,
+        )
+        resume_dt = tomorrow_solar["sunrise"] - CAM_SOLAR_BUFFER
+
+    day_word = "today" if resume_dt.date() == now_local.date() else "tomorrow"
+    resume_time = resume_dt.strftime("%I:%M %p").lstrip("0")
+    message = f"Live snapshots resume {day_word} at {resume_time}"
+
+    svg_text = CAM_NIGHT_PLACEHOLDER.read_text(encoding="utf-8")
+    svg_text = svg_text.replace("{{RESUME_MESSAGE}}", message)
+
+    return Response(
+        content=svg_text,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store, no-cache"},
+    )
 
 def _moon_phase_info(target_date) -> dict:
     phase = float(moon.phase(target_date)) % 28.0
@@ -475,16 +497,12 @@ def get_history(
 @app.get("/api/cam/latest")
 def get_latest_cam(preview: str | None = Query(default=None)):
     now_local = datetime.now(TIMEZONE)
-    is_night, _ = _cam_night_window(now_local)
+    is_night, cam_resume_dt = _cam_night_window(now_local)
     no_cache_headers = {"Cache-Control": "no-store, no-cache"}
 
     if preview == "night" or is_night:
         if CAM_NIGHT_PLACEHOLDER.is_file():
-            return FileResponse(
-                CAM_NIGHT_PLACEHOLDER,
-                media_type="image/svg+xml",
-                headers=no_cache_headers,
-            )
+            return _render_night_cam_svg(now_local, cam_resume_dt)
 
     captures = sorted(
         Path(CAM_IMAGE_DIR).glob("capture_*.jpg"),
@@ -499,11 +517,7 @@ def get_latest_cam(preview: str | None = Query(default=None)):
 
     # Graceful fallback if the daily timelapse script cleared images before the night cutoff
     if CAM_NIGHT_PLACEHOLDER.is_file():
-        return FileResponse(
-            CAM_NIGHT_PLACEHOLDER,
-            media_type="image/svg+xml",
-            headers=no_cache_headers,
-        )
+        return _render_night_cam_svg(now_local, cam_resume_dt)
 
     raise HTTPException(status_code=404, detail="No weather cam image available")
 
