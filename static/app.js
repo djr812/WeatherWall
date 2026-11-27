@@ -62,6 +62,15 @@ const METRIC_CONFIG = {
       { value: 100, label: "Poor ≤ 100", color: "#fb923c" },
     ],
   },
+  lightning: {
+    label: "Lightning Strikes",
+    color: "#fbbf24",
+    bg: "rgba(251, 191, 36, 0.65)",
+    type: "bar",
+    beginAtZero: true,
+    suggestedMax: 5,
+    integerTicks: true,
+  },
 };
 
 const thresholdLinesPlugin = {
@@ -330,7 +339,10 @@ function renderChart(metricKey) {
         y: {
           beginAtZero: cfg.beginAtZero,
           suggestedMax: cfg.suggestedMax,
-          ticks: { color: "#94a3b8" },
+          ticks: {
+            color: "#94a3b8",
+            ...(cfg.integerTicks ? { precision: 0 } : {}),
+          },
           grid: { color: "rgba(148,163,184,0.08)" },
         },
       },

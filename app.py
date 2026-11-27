@@ -279,7 +279,8 @@ def get_history(
             cur.execute(f"""
                 SELECT dateTime, usUnits, outTemp, barometer, rain,
                        {AQ_CO2_COL} AS co2,
-                       {AQ_PM10_COL} AS pm10_0
+                       {AQ_PM10_COL} AS pm10_0,
+                       {LIGHTNING_COUNT_COL} AS lightning_strikes
                 FROM archive
                 WHERE dateTime >= %s
                 ORDER BY dateTime ASC
@@ -290,7 +291,7 @@ def get_history(
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
 
     step = max(1, len(rows) // max_points)
-    labels, temps, pressures, rains, co2_vals, pm10_vals = [], [], [], [], [], []
+    labels, temps, pressures, rains, co2_vals, pm10_vals, lightning_vals = [], [], [], [], [], [], []
 
     for i in range(0, len(rows), step):
         bucket = rows[i:i + step]
@@ -322,6 +323,12 @@ def get_history(
         bucket_pm10 = [float(row["pm10_0"]) for row in bucket if row["pm10_0"] is not None]
         pm10_vals.append(round(sum(bucket_pm10) / len(bucket_pm10), 1) if bucket_pm10 else None)
 
+        bucket_lightning = sum(
+            int(round(float(row["lightning_strikes"])))
+            for row in bucket if row["lightning_strikes"] is not None
+        )
+        lightning_vals.append(bucket_lightning)
+
     return {
         "range": window,
         "labels": labels,
@@ -330,6 +337,7 @@ def get_history(
         "rain": rains,
         "co2": co2_vals,
         "pm10": pm10_vals,
+        "lightning": lightning_vals,
     }
 
 @app.get("/api/cam/latest")
@@ -490,6 +498,7 @@ def get_station_records(
             pass
 
     date_clause = "AND dateTime >= %s" if since_epoch is not None else ""
+    d_date_clause = "AND d.dateTime >= %s" if since_epoch is not None else ""
     params = (since_epoch,) if since_epoch is not None else ()
 
     try:
@@ -583,6 +592,32 @@ def get_station_records(
                 ORDER BY max DESC, maxtime DESC
                 LIMIT 1
             """, params)
+
+            closest_strike = _safe_one(cur, f"""
+                SELECT d.min AS val, d.mintime AS ts
+                FROM archive_day_{LIGHTNING_DIST_COL} AS d
+                INNER JOIN archive_day_{LIGHTNING_COUNT_COL} AS c
+                    ON d.dateTime = c.dateTime
+                WHERE c.sum > 0
+                  AND d.min IS NOT NULL
+                  AND d.min > 0 {d_date_clause}
+                ORDER BY d.min ASC, d.mintime DESC
+                LIMIT 1
+            """, params)
+
+            most_strikes_day = _safe_one(cur, f"""
+                SELECT sum AS val, dateTime AS ts
+                FROM archive_day_{LIGHTNING_COUNT_COL}
+                WHERE sum IS NOT NULL AND sum > 0 {date_clause}
+                ORDER BY sum DESC, dateTime DESC
+                LIMIT 1
+            """, params)
+
+            total_strikes_row = _safe_one(cur, f"""
+                SELECT SUM(sum) AS total_strikes
+                FROM archive_day_{LIGHTNING_COUNT_COL}
+                WHERE sum IS NOT NULL {date_clause}
+            """, params)
         conn.close()
     except pymysql.MySQLError as exc:
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
@@ -603,6 +638,13 @@ def get_station_records(
         total_rain_mm = round(to_metric(total_rain_row["total_rain"], "rain", units), 1)
 
     no_rain_meta = "No rain recorded" if total_rain_mm == 0.0 else "--"
+
+    total_strikes = (
+        int(round(float(total_strikes_row["total_strikes"])))
+        if total_strikes_row and total_strikes_row.get("total_strikes") is not None
+        else 0
+    )
+    no_lgt_meta = "No strikes recorded" if total_strikes == 0 else "--"
 
     payload = {
         "period": period,
@@ -661,6 +703,19 @@ def get_station_records(
                 "sub": f"Max Solar: {int(round(float(high_solar['val'])))} W/m²" if high_solar else "",
                 "meta": _fmt_ts(high_uv["ts"]) if high_uv else "--",
                 "tone": "warm",
+            },
+            {
+                "label": "Closest Strike",
+                "value": f"{to_metric(closest_strike['val'], 'distance', units)} km" if closest_strike else "--",
+                "meta": _fmt_ts(closest_strike["ts"]) if closest_strike else no_lgt_meta,
+                "tone": "warn",
+            },
+            {
+                "label": "Most Strikes (Day)",
+                "value": f"{int(round(float(most_strikes_day['val']))):,}" if most_strikes_day else ("0" if total_strikes == 0 else "--"),
+                "sub": f"Period Total: {total_strikes:,}" if total_strikes > 0 else "",
+                "meta": _fmt_ts(most_strikes_day["ts"], date_only=True) if most_strikes_day else no_lgt_meta,
+                "tone": "warn",
             },
         ],
     }
