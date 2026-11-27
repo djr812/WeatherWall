@@ -36,6 +36,8 @@ body {
 
 /* Top Header 3-Column Alignment */
 header {
+  max-width: 1400px;
+  margin: 0 auto 1.25rem;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
