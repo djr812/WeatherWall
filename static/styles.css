@@ -22,18 +22,6 @@ body {
   padding: 1.25rem;
 }
 
-/*
-.topbar {
-  max-width: 1400px;
-  margin: 0 auto 1.25rem;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-}
-*/
-
 /* Top Header 3-Column Alignment */
 header {
   max-width: 1400px;
@@ -539,7 +527,255 @@ header > :last-child  { justify-self: end; }
   color: var(--muted);
 }
 
+/* Ferny Grove 7-Day & Hourly Forecast Card */
+.card-forecast { grid-column: span 12; }
+
+.forecast-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.forecast-btn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 7px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.forecast-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  color: var(--accent);
+}
+
+/* 7-Day Grid */
+.forecast-daily-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.65rem;
+}
+
+.forecast-day-tile {
+  background: rgba(15, 23, 42, 0.48);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 0.85rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.45rem;
+}
+
+.forecast-day-tile.is-today {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(30, 41, 59, 0.62);
+}
+
+.fday-head {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.fday-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.fday-date {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.forecast-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.forecast-icon svg {
+  width: 38px;
+  height: 38px;
+  display: block;
+}
+
+.fday-cond {
+  font-size: 0.76rem;
+  color: var(--muted);
+  min-height: 2.1em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+/* Temperature Range Bar */
+.temp-range-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+.temp-low-val,
+.temp-high-val {
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-width: 2rem;
+}
+
+.temp-low-val  { color: var(--cool); text-align: right; }
+.temp-high-val { color: var(--warm); text-align: left; }
+
+.temp-bar-track {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  overflow: hidden;
+}
+
+.temp-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8 0%, #fbbf24 55%, #fb923c 100%);
+}
+
+.fday-meta {
+  width: 100%;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--surface-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.fday-rain {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.fday-rain.is-dry {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Next 24-Hour Scrollable Strip */
+.forecast-hourly-strip {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding-bottom: 0.45rem;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+.forecast-hour-tile {
+  flex: 0 0 88px;
+  scroll-snap-align: start;
+  background: rgba(15, 23, 42, 0.48);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+}
+
+.forecast-hour-tile.is-now {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(30, 41, 59, 0.62);
+}
+
+.fhour-time {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.forecast-hour-tile.is-now .fhour-time {
+  color: var(--accent);
+}
+
+.fhour-temp {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.fhour-rain {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #60a5fa;
+}
+
+.fhour-rain.is-dry {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.fhour-gust {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
 /* Tablet & Mobile Responsive */
+@media (max-width: 1180px) {
+  .forecast-daily-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .forecast-daily-grid {
+    grid-template-columns: 1fr;
+  }
+  .forecast-day-tile {
+    display: grid;
+    grid-template-columns: 64px 38px 1fr;
+    align-items: center;
+    text-align: left;
+    gap: 0.4rem 0.7rem;
+    padding: 0.75rem 0.85rem;
+  }
+  .fday-cond {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    min-height: 0;
+  }
+  .temp-range-row {
+    grid-column: 3;
+    grid-row: 1;
+    margin-top: 0;
+  }
+  .fday-meta {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: space-between;
+    padding-top: 0.4rem;
+  }
+}
+
 @media (max-width: 1024px) {
   .records-grid { grid-template-columns: repeat(2, 1fr); }
 }

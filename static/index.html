@@ -6,9 +6,9 @@
   <title>Weather Wall — Live Telemetry</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="shortcut icon" href="/favicon.ico" />
-  <link rel="stylesheet" href="/styles.css?v=19" />
+  <link rel="stylesheet" href="/styles.css?v=20" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
-  <script src="/app.js?v=18" defer></script>
+  <script src="/app.js?v=20" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -127,6 +127,24 @@
         <span class="card-label">UV / Solar</span>
         <div class="metric-val"><span id="uv-value">--</span><small> UV</small></div>
         <span class="muted small"><span id="solar-value">--</span> W/m²</span>
+      </div>
+    </section>
+
+    <!-- Ferny Grove 7-Day & Hourly Forecast Card -->
+    <section class="card card-forecast">
+      <div class="card-header-row">
+        <div class="card-label" id="forecast-title">7-Day Forecast — Ferny Grove</div>
+        <div class="forecast-controls">
+          <span class="muted small" id="forecast-updated">Loading forecast...</span>
+          <div class="range-toggle" role="group" aria-label="Forecast view">
+            <button class="forecast-btn active" data-view="7d" type="button">7-Day</button>
+            <button class="forecast-btn" data-view="24h" type="button">Next 24h</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="forecast-body">
+        <div class="muted small">Loading Open-Meteo forecast...</div>
       </div>
     </section>
 

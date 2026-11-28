@@ -18,6 +18,9 @@ let loadedTimelapseVersion = null;
 let pendingTimelapseVersion = null;
 let lastFallbackReloadDate = null;
 
+let forecastData = null;
+let activeForecastView = "7d";
+
 const RECORDS_TITLES = {
   all: "All-Time Station Records",
   year: "This Year's Station Records",
@@ -634,6 +637,256 @@ async function fetchRecords(period = activeRecordsPeriod, force = false) {
   }
 }
 
+function renderForecastIcon(iconKey, isDay = true) {
+  const sunCircle = `<circle cx="32" cy="32" r="11" fill="#fbbf24" />`;
+  const sunRays = `
+    <g stroke="#fbbf24" stroke-width="3" stroke-linecap="round">
+      <line x1="32" y1="8" x2="32" y2="14" />
+      <line x1="32" y1="50" x2="32" y2="56" />
+      <line x1="8" y1="32" x2="14" y2="32" />
+      <line x1="50" y1="32" x2="56" y2="32" />
+      <line x1="15" y1="15" x2="19.5" y2="19.5" />
+      <line x1="44.5" y1="44.5" x2="49" y2="49" />
+      <line x1="49" y1="15" x2="44.5" y2="19.5" />
+      <line x1="19.5" y1="44.5" x2="15" y2="49" />
+    </g>
+  `;
+  const moonCrescent = `<path d="M36 16a14 14 0 1 0 11 22 11 11 0 1 1-11-22z" fill="#e2e8f0" />`;
+  const smallSun = `<circle cx="43" cy="21" r="9" fill="#fbbf24" />`;
+  const smallMoon = `<path d="M44 13a9 9 0 1 0 7 14 7 7 0 1 1-7-14z" fill="#e2e8f0" />`;
+  const cloudLight = `
+    <path d="M21 44h23a9 9 0 0 0 1.4-17.9A12 12 0 0 0 22.5 23a10 10 0 0 0-1.5 21z" fill="#cbd5e1" />
+  `;
+  const cloudDark = `
+    <path d="M20 40h24a8.5 8.5 0 0 0 1.3-16.9A11.5 11.5 0 0 0 23.2 20a9.5 9.5 0 0 0-3.2 20z" fill="#94a3b8" />
+  `;
+
+  let inner = cloudLight;
+  switch (iconKey) {
+    case "clear":
+      inner = isDay ? `${sunRays}${sunCircle}` : moonCrescent;
+      break;
+    case "mostly-clear":
+    case "partly-cloudy":
+      inner = `${isDay ? smallSun : smallMoon}${cloudLight}`;
+      break;
+    case "cloudy":
+      inner = cloudDark;
+      break;
+    case "fog":
+      inner = `
+        ${cloudDark}
+        <g stroke="#94a3b8" stroke-width="3" stroke-linecap="round">
+          <line x1="14" y1="47" x2="50" y2="47" />
+          <line x1="19" y1="53" x2="45" y2="53" />
+        </g>
+      `;
+      break;
+    case "drizzle":
+      inner = `
+        ${cloudDark}
+        <g stroke="#60a5fa" stroke-width="2.6" stroke-linecap="round">
+          <line x1="23" y1="46" x2="21" y2="51" />
+          <line x1="33" y1="46" x2="31" y2="51" />
+          <line x1="43" y1="46" x2="41" y2="51" />
+        </g>
+      `;
+      break;
+    case "rain":
+    case "showers":
+      inner = `
+        ${iconKey === "showers" && isDay ? smallSun : ""}
+        ${cloudDark}
+        <g stroke="#38bdf8" stroke-width="3" stroke-linecap="round">
+          <line x1="22" y1="45" x2="18" y2="54" />
+          <line x1="32" y1="45" x2="28" y2="54" />
+          <line x1="42" y1="45" x2="38" y2="54" />
+        </g>
+      `;
+      break;
+    case "snow":
+      inner = `
+        ${cloudLight}
+        <g fill="#e0f2fe">
+          <circle cx="22" cy="50" r="2.5" />
+          <circle cx="32" cy="52" r="2.5" />
+          <circle cx="42" cy="50" r="2.5" />
+        </g>
+      `;
+      break;
+    case "storm":
+      inner = `
+        ${cloudDark}
+        <polygon points="34,39 25,51 31,51 28,60 40,46 34,46" fill="#fbbf24" />
+      `;
+      break;
+    default:
+      inner = cloudLight;
+  }
+
+  return `<svg viewBox="0 0 64 64" aria-hidden="true">${inner}</svg>`;
+}
+
+function renderForecast() {
+  const body = document.getElementById("forecast-body");
+  if (!body || !forecastData) return;
+
+  setText(
+    "forecast-title",
+    activeForecastView === "24h"
+      ? "Next 24 Hours — Ferny Grove"
+      : "7-Day Forecast — Ferny Grove"
+  );
+
+  body.innerHTML = "";
+
+  if (activeForecastView === "24h") {
+    const strip = document.createElement("div");
+    strip.className = "forecast-hourly-strip";
+
+    (forecastData.hourly || []).forEach((hr, idx) => {
+      const tile = document.createElement("div");
+      tile.className = `forecast-hour-tile${idx === 0 ? " is-now" : ""}`;
+      tile.title = hr.condition;
+
+      const timeEl = document.createElement("div");
+      timeEl.className = "fhour-time";
+      timeEl.textContent = hr.time_label;
+
+      const iconWrap = document.createElement("div");
+      iconWrap.className = "forecast-icon";
+      iconWrap.innerHTML = renderForecastIcon(hr.icon, hr.is_day);
+
+      const tempEl = document.createElement("div");
+      tempEl.className = "fhour-temp";
+      tempEl.textContent = hr.temp_c !== null ? `${Math.round(hr.temp_c)}°` : "--";
+
+      const rainEl = document.createElement("div");
+      const hasRain = (hr.rain_chance || 0) >= 15 || (hr.rain_mm || 0) > 0;
+      rainEl.className = `fhour-rain${hasRain ? "" : " is-dry"}`;
+      rainEl.textContent =
+        hr.rain_mm >= 0.2
+          ? `${hr.rain_chance}% · ${hr.rain_mm}mm`
+          : `${hr.rain_chance}% rain`;
+
+      const gustEl = document.createElement("div");
+      gustEl.className = "fhour-gust";
+      gustEl.textContent = hr.wind_gust !== null ? `Gust ${hr.wind_gust} km/h` : "";
+
+      tile.append(timeEl, iconWrap, tempEl, rainEl, gustEl);
+      strip.appendChild(tile);
+    });
+
+    body.appendChild(strip);
+    return;
+  }
+
+  // 7-Day Daily View with temperature range bars
+  const grid = document.createElement("div");
+  grid.className = "forecast-daily-grid";
+
+  const weekMin = Number(forecastData.week_min ?? 0);
+  const weekMax = Number(forecastData.week_max ?? 40);
+  const weekSpan = Math.max(1, weekMax - weekMin);
+
+  (forecastData.daily || []).forEach((day, idx) => {
+    const tile = document.createElement("div");
+    tile.className = `forecast-day-tile${idx === 0 ? " is-today" : ""}`;
+
+    const head = document.createElement("div");
+    head.className = "fday-head";
+    const nameEl = document.createElement("span");
+    nameEl.className = "fday-name";
+    nameEl.textContent = day.day_label;
+    const dateEl = document.createElement("span");
+    dateEl.className = "fday-date";
+    dateEl.textContent = day.date_short;
+    head.append(nameEl, dateEl);
+
+    const iconWrap = document.createElement("div");
+    iconWrap.className = "forecast-icon";
+    iconWrap.innerHTML = renderForecastIcon(day.icon, true);
+
+    const condEl = document.createElement("div");
+    condEl.className = "fday-cond";
+    condEl.textContent = day.condition;
+
+    // Temperature range bar scaled across the 7-day min/max window
+    const rangeRow = document.createElement("div");
+    rangeRow.className = "temp-range-row";
+
+    const lowEl = document.createElement("span");
+    lowEl.className = "temp-low-val";
+    lowEl.textContent = day.min_c !== null ? `${Math.round(day.min_c)}°` : "--";
+
+    const track = document.createElement("div");
+    track.className = "temp-bar-track";
+
+    if (day.min_c !== null && day.max_c !== null) {
+      const leftPct = Math.max(0, Math.min(88, ((day.min_c - weekMin) / weekSpan) * 100));
+      const rawWidth = ((day.max_c - day.min_c) / weekSpan) * 100;
+      const widthPct = Math.max(12, Math.min(100 - leftPct, rawWidth));
+      const fill = document.createElement("span");
+      fill.className = "temp-bar-fill";
+      fill.style.left = `${leftPct.toFixed(1)}%`;
+      fill.style.width = `${widthPct.toFixed(1)}%`;
+      track.appendChild(fill);
+    }
+
+    const highEl = document.createElement("span");
+    highEl.className = "temp-high-val";
+    highEl.textContent = day.max_c !== null ? `${Math.round(day.max_c)}°` : "--";
+
+    rangeRow.append(lowEl, track, highEl);
+
+    const meta = document.createElement("div");
+    meta.className = "fday-meta";
+
+    const rainEl = document.createElement("div");
+    const hasRain = (day.rain_chance || 0) >= 20 || (day.rain_mm || 0) >= 0.2;
+    rainEl.className = `fday-rain${hasRain ? "" : " is-dry"}`;
+    rainEl.textContent =
+      day.rain_mm >= 0.2
+        ? `Rain: ${day.rain_chance}% (${day.rain_mm} mm)`
+        : `Rain: ${day.rain_chance}%`;
+
+    const windUvEl = document.createElement("div");
+    const parts = [];
+    if (day.wind_gust !== null) parts.push(`Gust ${day.wind_gust} km/h`);
+    if (day.uv_max !== null) parts.push(`UV ${Math.round(day.uv_max)}`);
+    windUvEl.textContent = parts.join(" · ");
+
+    meta.append(rainEl, windUvEl);
+
+    tile.append(head, iconWrap, condEl, rangeRow, meta);
+    grid.appendChild(tile);
+  });
+
+  body.appendChild(grid);
+}
+
+async function fetchForecast() {
+  try {
+    const res = await fetch("/api/forecast", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    forecastData = await res.json();
+    setText(
+      "forecast-updated",
+      forecastData.updated_display
+        ? `Updated ${forecastData.updated_display} · Open-Meteo`
+        : "Open-Meteo"
+    );
+    renderForecast();
+  } catch (err) {
+    console.error("Forecast fetch failed:", err);
+    setText("forecast-updated", "Unavailable");
+    const body = document.getElementById("forecast-body");
+    if (body) {
+      body.innerHTML = `<div class="muted small">Unable to load Ferny Grove forecast.</div>`;
+    }
+  }
+}
+
 async function fetchCapitals() {
   const grid = document.getElementById("capitals-grid");
   if (!grid) return;
@@ -741,12 +994,25 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  document.querySelectorAll(".forecast-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nextView = btn.dataset.view;
+      if (!nextView || nextView === activeForecastView) return;
+
+      activeForecastView = nextView;
+      document.querySelectorAll(".forecast-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderForecast();
+    });
+  });
+
   // Initial data fetches & refresh schedules
   fetchWeather();
   fetchHistory(activeRange, true);
   refreshCam();
   fetchRecords(activeRecordsPeriod, true);
   fetchCapitals();
+  fetchForecast();
 
   setInterval(fetchWeather, 60 * 1000);
   setInterval(refreshCam, 5 * 60 * 1000);
@@ -754,4 +1020,5 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(() => fetchRecords(activeRecordsPeriod, true), 15 * 60 * 1000);
   setInterval(fetchCapitals, 15 * 60 * 1000);
   setInterval(updateSunCountdown, 30 * 1000);
+  setInterval(fetchForecast, 30 * 60 * 1000);
 });

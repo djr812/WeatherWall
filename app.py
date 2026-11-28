@@ -49,6 +49,40 @@ CAPITALS_CACHE_FILE = Path("/tmp/weatherwall_capitals_cache.json")
 RECORDS_CACHE_TTL = int(os.getenv("RECORDS_CACHE_TTL", "600"))
 RECORDS_CACHE_DIR = Path("/tmp")
 
+FORECAST_CACHE_TTL = int(os.getenv("FORECAST_CACHE_TTL", "1800"))
+FORECAST_CACHE_FILE = Path("/tmp/weatherwall_forecast_cache.json")
+
+WMO_WEATHER_MAP = {
+    0: ("Clear", "clear"),
+    1: ("Mostly Clear", "mostly-clear"),
+    2: ("Partly Cloudy", "partly-cloudy"),
+    3: ("Overcast", "cloudy"),
+    45: ("Fog", "fog"),
+    48: ("Rime Fog", "fog"),
+    51: ("Light Drizzle", "drizzle"),
+    53: ("Drizzle", "drizzle"),
+    55: ("Heavy Drizzle", "drizzle"),
+    56: ("Freezing Drizzle", "drizzle"),
+    57: ("Freezing Drizzle", "drizzle"),
+    61: ("Light Rain", "rain"),
+    63: ("Rain", "rain"),
+    65: ("Heavy Rain", "rain"),
+    66: ("Freezing Rain", "rain"),
+    67: ("Heavy Freezing Rain", "rain"),
+    71: ("Light Snow", "snow"),
+    73: ("Snow", "snow"),
+    75: ("Heavy Snow", "snow"),
+    77: ("Snow Grains", "snow"),
+    80: ("Light Showers", "showers"),
+    81: ("Showers", "showers"),
+    82: ("Heavy Showers", "showers"),
+    85: ("Snow Showers", "snow"),
+    86: ("Heavy Snow Showers", "snow"),
+    95: ("Thunderstorm", "storm"),
+    96: ("Storm & Hail", "storm"),
+    99: ("Severe Storm", "storm"),
+}
+
 AQ_CO2_COL = "co2"
 AQ_PM10_COL = "pm10_0"
 
@@ -67,6 +101,17 @@ AUSTRALIAN_CAPITALS = [
 ]
 
 app = FastAPI(title="Weather Wall API")
+
+def _wmo_info(code) -> tuple[str, str]:
+    if code is None:
+        return "Unknown", "cloudy"
+    return WMO_WEATHER_MAP.get(int(code), ("Cloudy", "cloudy"))
+
+
+def _safe_idx(seq, idx):
+    if not seq or idx >= len(seq):
+        return None
+    return seq[idx]
 
 def _cam_night_window(now_local: datetime):
     today_solar = sun(
@@ -884,6 +929,179 @@ def get_station_records(
         pass
 
     return payload
+
+def _build_forecast_response(cached: dict, now_local: datetime) -> dict:
+    current_hour_epoch = int(
+        now_local.replace(minute=0, second=0, microsecond=0).timestamp()
+    )
+    hourly_pool = cached.get("hourly_pool", [])
+    upcoming = [h for h in hourly_pool if h["epoch"] >= current_hour_epoch][:24]
+    if not upcoming:
+        upcoming = hourly_pool[:24]
+
+    hourly_out = []
+    for idx, item in enumerate(upcoming):
+        hourly_out.append({
+            "time_label": "Now" if idx == 0 else item["time_label"],
+            "temp_c": item["temp_c"],
+            "rain_chance": item["rain_chance"],
+            "rain_mm": item["rain_mm"],
+            "wind_gust": item["wind_gust"],
+            "condition": item["condition"],
+            "icon": item["icon"],
+            "is_day": item["is_day"],
+        })
+
+    return {
+        "updated_display": cached.get("updated_display", "--"),
+        "week_min": cached.get("week_min"),
+        "week_max": cached.get("week_max"),
+        "daily": cached.get("daily", []),
+        "hourly": hourly_out,
+    }
+
+
+@app.get("/api/forecast")
+async def get_forecast():
+    now_local = datetime.now(TIMEZONE)
+    now_epoch = time.time()
+    today_iso = now_local.date().isoformat()
+    stale_cache = None
+
+    if FORECAST_CACHE_FILE.is_file():
+        try:
+            cached = json.loads(FORECAST_CACHE_FILE.read_text(encoding="utf-8"))
+            stale_cache = cached
+            if (
+                cached.get("date_iso") == today_iso
+                and now_epoch - cached.get("fetched_epoch", 0) < FORECAST_CACHE_TTL
+            ):
+                return _build_forecast_response(cached, now_local)
+        except (OSError, ValueError):
+            pass
+
+    params = {
+        "latitude": STATION_LAT,
+        "longitude": STATION_LON,
+        "timezone": "Australia/Brisbane",
+        "forecast_days": 7,
+        "daily": ",".join([
+            "weather_code",
+            "temperature_2m_max",
+            "temperature_2m_min",
+            "precipitation_probability_max",
+            "precipitation_sum",
+            "wind_speed_10m_max",
+            "wind_gusts_10m_max",
+            "uv_index_max",
+        ]),
+        "hourly": ",".join([
+            "temperature_2m",
+            "precipitation_probability",
+            "precipitation",
+            "weather_code",
+            "wind_gusts_10m",
+            "is_day",
+        ]),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get("https://api.open-meteo.com/v1/forecast", params=params)
+            resp.raise_for_status()
+            raw = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        if stale_cache:
+            return _build_forecast_response(stale_cache, now_local)
+        raise HTTPException(status_code=503, detail=f"Forecast upstream error: {exc}")
+
+    daily_raw = raw.get("daily", {})
+    daily_times = daily_raw.get("time", [])
+    daily_items = []
+    all_mins, all_maxs = [], []
+
+    for i, day_str in enumerate(daily_times):
+        day_date = datetime.strptime(day_str, "%Y-%m-%d").date()
+        delta_days = (day_date - now_local.date()).days
+        if delta_days == 0:
+            day_label = "Today"
+        elif delta_days == 1:
+            day_label = "Tomorrow"
+        else:
+            day_label = day_date.strftime("%a")
+
+        t_min = _safe_idx(daily_raw.get("temperature_2m_min"), i)
+        t_max = _safe_idx(daily_raw.get("temperature_2m_max"), i)
+        if t_min is not None:
+            t_min = round(float(t_min), 1)
+            all_mins.append(t_min)
+        if t_max is not None:
+            t_max = round(float(t_max), 1)
+            all_maxs.append(t_max)
+
+        cond, icon = _wmo_info(_safe_idx(daily_raw.get("weather_code"), i))
+        rain_prob = _safe_idx(daily_raw.get("precipitation_probability_max"), i)
+        rain_sum = _safe_idx(daily_raw.get("precipitation_sum"), i)
+        wind_max = _safe_idx(daily_raw.get("wind_speed_10m_max"), i)
+        gust_max = _safe_idx(daily_raw.get("wind_gusts_10m_max"), i)
+        uv_max = _safe_idx(daily_raw.get("uv_index_max"), i)
+
+        daily_items.append({
+            "date": day_str,
+            "day_label": day_label,
+            "date_short": day_date.strftime("%d %b"),
+            "condition": cond,
+            "icon": icon,
+            "min_c": t_min,
+            "max_c": t_max,
+            "rain_chance": int(round(float(rain_prob))) if rain_prob is not None else 0,
+            "rain_mm": round(float(rain_sum), 1) if rain_sum is not None else 0.0,
+            "wind_max": int(round(float(wind_max))) if wind_max is not None else None,
+            "wind_gust": int(round(float(gust_max))) if gust_max is not None else None,
+            "uv_max": round(float(uv_max), 1) if uv_max is not None else None,
+        })
+
+    hourly_raw = raw.get("hourly", {})
+    hourly_times = hourly_raw.get("time", [])
+    hourly_pool = []
+    # Keep 48 hours so cached responses always hold a full 24h upcoming window
+    for i, ts_str in enumerate(hourly_times[:48]):
+        dt = datetime.fromisoformat(ts_str).replace(tzinfo=TIMEZONE)
+        cond, icon = _wmo_info(_safe_idx(hourly_raw.get("weather_code"), i))
+        t_val = _safe_idx(hourly_raw.get("temperature_2m"), i)
+        r_prob = _safe_idx(hourly_raw.get("precipitation_probability"), i)
+        r_mm = _safe_idx(hourly_raw.get("precipitation"), i)
+        gust = _safe_idx(hourly_raw.get("wind_gusts_10m"), i)
+        is_day_val = _safe_idx(hourly_raw.get("is_day"), i)
+
+        hourly_pool.append({
+            "epoch": int(dt.timestamp()),
+            "time_label": dt.strftime("%I %p").lstrip("0"),
+            "temp_c": round(float(t_val), 1) if t_val is not None else None,
+            "rain_chance": int(round(float(r_prob))) if r_prob is not None else 0,
+            "rain_mm": round(float(r_mm), 1) if r_mm is not None else 0.0,
+            "wind_gust": int(round(float(gust))) if gust is not None else None,
+            "condition": cond,
+            "icon": icon,
+            "is_day": bool(is_day_val) if is_day_val is not None else True,
+        })
+
+    cache_payload = {
+        "date_iso": today_iso,
+        "fetched_epoch": now_epoch,
+        "updated_display": now_local.strftime("%I:%M %p").lstrip("0"),
+        "week_min": min(all_mins) if all_mins else None,
+        "week_max": max(all_maxs) if all_maxs else None,
+        "daily": daily_items,
+        "hourly_pool": hourly_pool,
+    }
+
+    try:
+        FORECAST_CACHE_FILE.write_text(json.dumps(cache_payload), encoding="utf-8")
+    except OSError:
+        pass
+
+    return _build_forecast_response(cache_payload, now_local)
 
 FAVICON_PATH = Path(__file__).resolve().parent / "static" / "favicon.svg"
 
