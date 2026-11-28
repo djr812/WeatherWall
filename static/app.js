@@ -21,6 +21,36 @@ let lastFallbackReloadDate = null;
 let forecastData = null;
 let activeForecastView = "7d";
 
+let activeRadarLayer = "radar";
+
+const WINDY_COORDS = { lat: -27.4028, lon: 152.9282 };
+const WINDY_LAYERS = {
+  radar: {
+    title: "Live Rain Radar — Ferny Grove",
+    overlay: "radar",
+    product: "radar",
+    zoom: 9,
+  },
+  rain: {
+    title: "Rain & Thunder Forecast — Ferny Grove",
+    overlay: "rain",
+    product: "ecmwf",
+    zoom: 8,
+  },
+  wind: {
+    title: "Live Wind Map — Ferny Grove",
+    overlay: "wind",
+    product: "ecmwf",
+    zoom: 8,
+  },
+  satellite: {
+    title: "Satellite Cloud View — South East QLD",
+    overlay: "satellite",
+    product: "satellite",
+    zoom: 7,
+  },
+};
+
 const RECORDS_TITLES = {
   all: "All-Time Station Records",
   year: "This Year's Station Records",
@@ -400,6 +430,36 @@ function refreshCam() {
   } else {
     setText("cam-timestamp", new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   }
+}
+
+function buildWindyUrl(layerKey, forceBust = false) {
+  const cfg = WINDY_LAYERS[layerKey] || WINDY_LAYERS.radar;
+  const params = new URLSearchParams({
+    type: "map",
+    location: "coordinates",
+    metricRain: "mm",
+    metricTemp: "°C",
+    metricWind: "km/h",
+    zoom: String(cfg.zoom),
+    overlay: cfg.overlay,
+    product: cfg.product,
+    level: "surface",
+    lat: String(WINDY_COORDS.lat),
+    lon: String(WINDY_COORDS.lon),
+    marker: "true",
+  });
+  if (forceBust) params.set("_t", String(Date.now()));
+  return `https://embed.windy.com/embed.html?${params.toString()}`;
+}
+
+function loadRadarLayer(layerKey, forceReload = false) {
+  const frame = document.getElementById("windy-radar-frame");
+  const cfg = WINDY_LAYERS[layerKey];
+  if (!frame || !cfg) return;
+
+  activeRadarLayer = layerKey;
+  setText("radar-title", cfg.title);
+  frame.src = buildWindyUrl(layerKey, forceReload);
 }
 
 function getTimelapseBaseUrl(video) {
@@ -1004,6 +1064,21 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("active");
       renderForecast();
     });
+  });
+
+  document.querySelectorAll(".radar-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nextLayer = btn.dataset.layer;
+      if (!nextLayer || nextLayer === activeRadarLayer) return;
+
+      document.querySelectorAll(".radar-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadRadarLayer(nextLayer);
+    });
+  });
+
+  document.getElementById("btn-reset-radar")?.addEventListener("click", () => {
+    loadRadarLayer(activeRadarLayer, true);
   });
 
   // Initial data fetches & refresh schedules

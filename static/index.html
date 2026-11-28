@@ -6,9 +6,9 @@
   <title>Weather Wall — Live Telemetry</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="shortcut icon" href="/favicon.ico" />
-  <link rel="stylesheet" href="/styles.css?v=20" />
+  <link rel="stylesheet" href="/styles.css?v=21" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
-  <script src="/app.js?v=20" defer></script>
+  <script src="/app.js?v=21" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -268,6 +268,34 @@
             <span class="aqi-val" id="lgt-today">0</span>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Live Rain Radar Card (Windy.com) -->
+    <section class="card card-radar">
+      <div class="card-header-row">
+        <div class="card-label" id="radar-title">Live Rain Radar — Ferny Grove</div>
+        <div class="radar-controls">
+          <div class="range-toggle" role="group" aria-label="Radar overlay">
+            <button class="radar-btn active" data-layer="radar" type="button">Radar</button>
+            <button class="radar-btn" data-layer="rain" type="button">Rain &amp; Thunder</button>
+            <button class="radar-btn" data-layer="wind" type="button">Wind</button>
+            <button class="radar-btn" data-layer="satellite" type="button">Satellite</button>
+          </div>
+          <button class="btn-subtle" id="btn-reset-radar" type="button" title="Recenter map on Ferny Grove">
+            Recenter
+          </button>
+        </div>
+      </div>
+
+      <div class="radar-frame-wrap">
+        <iframe
+          id="windy-radar-frame"
+          title="Live Weather Radar for Ferny Grove, Brisbane"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=km/h&zoom=9&overlay=radar&product=radar&level=surface&lat=-27.4028&lon=152.9282&marker=true"
+        ></iframe>
       </div>
     </section>
 
